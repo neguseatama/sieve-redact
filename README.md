@@ -55,7 +55,7 @@ Companion tool to [Sieve Lens](https://github.com/neguseatama/sieve-lens)
 | NAME | Target |
 |------|--------|
 | `postal-jp` | Japanese postal codes `NNN-NNNN` |
-| `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `0120-…` / 4-digit area codes) |
+| `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `050-…` / `0120-…` / 4-digit area codes `01XX-07XX`) |
 | `email` | Email addresses (ASCII) |
 | `chars` | All occurrences of given codepoints (`U+200B,U+00AD` form) |
 
@@ -142,6 +142,9 @@ Lens integration, CLI boundaries). No additional dependencies.
 4. **Text only** — PDF, images and Office formats are not supported
 5. **Full-width digits and non-ASCII hyphens are out of scope** for
    postal/phone
+6. **4-digit area codes starting with 08/09 (except `0800`) and short
+   numbers such as 117/104 are out of scope** for `phone-jp` — match
+   them explicitly with `--rule`
 
 ---
 
