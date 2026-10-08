@@ -405,8 +405,8 @@ def _phone_prefix_ok(constraint, area):
         return True
     if constraint == "433":
         return area in _PHONE_433_PREFIXES
-    # "424": 0[1-6]XX かつ 433 接頭辞に非所属
-    return area[1] in "123456" and area not in _PHONE_433_PREFIXES
+    # "424": 0[1-7]XX かつ 433 接頭辞に非所属
+    return area[1] in "1234567" and area not in _PHONE_433_PREFIXES
 
 
 def match_phone_jp(text):
