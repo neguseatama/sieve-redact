@@ -21,7 +21,7 @@ import os
 import sys
 from collections import namedtuple
 
-VERSION = "0.3"
+VERSION = "0.4"
 
 MODES = ("delete", "mosaic", "label", "noise", "decor", "replace")
 DEFAULT_LABEL_PREFIX = "[REDACTED]"
