@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sieve-redact"
+dynamic = ["version"]
+description = "Deterministic text and image masking — byte/byte-pixel integrity outside matched regions"
+readme = "README.md"
+authors = [{ name = "Kai IWASAKI" }]
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+image = ["Pillow>=10.0"]
+
+[project.scripts]
+sieve-redact = "sieve_redact:main"
+
+[tool.setuptools]
+py-modules = ["sieve_redact"]
+
+[tool.setuptools.dynamic]
+version = { attr = "sieve_redact.__version__" }
