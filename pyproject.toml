@@ -22,4 +22,4 @@ sieve-redact = "sieve_redact:main"
 py-modules = ["sieve_redact"]
 
 [tool.setuptools.dynamic]
-version = { attr = "sieve_redact.__version__" }
+version = { attr = "sieve_redact.VERSION" }
