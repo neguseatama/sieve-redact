@@ -79,7 +79,9 @@ Image receipts set `byte_integrity_verified` to `null` (not applicable —
 PNG re-encoding changes file bytes structurally) and report pixel
 integrity outside every region as `pixel_integrity_verified`; `--strict`
 exits 3 when it fails. File metadata (EXIF etc.) is always dropped on
-save — a privacy-friendly default by design.
+save — a privacy-friendly default by design. Output bytes are
+deterministic across platforms and pinned in CI (with Pillow 12.3.0;
+future Pillow updates may change encoded bytes, never pixels).
 
 ### Word-unit matching (`+` prefix)
 
