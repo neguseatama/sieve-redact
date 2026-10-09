@@ -871,8 +871,7 @@ def build_argparser():
     parser.add_argument("--config", metavar="FILE",
                         help="設定ファイル。行書式: rule <spec> / builtin <spec>"
                              " / '#' コメント / 空行。spec は CLI と同一文法。"
-                             "適用順は常に --rule / --builtin / --from-lens より先"
-                             ")
+                             "適用順は常に --rule / --builtin / --from-lens より先")
     parser.add_argument("--strict", action="store_true",
                         help="他バイト完全性の検証に失敗したら出力せず終了コード 3")
     parser.add_argument("--receipt", metavar="FILE",
