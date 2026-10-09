@@ -37,6 +37,25 @@ Companion tool to [Sieve Lens](https://github.com/neguseatama/sieve-lens)
 
 ---
 
+## 🧩 The Sieve Series
+
+Sieve is a family of deterministic, zero-dependency engines that share
+the same design principles (deterministic output, no telemetry, fully
+local) — each engine observes or masks one specific risk, and they
+compose:
+
+| Package | Role | Connects to |
+|---------|------|-------------|
+| [sieve-core-engine](https://github.com/neguseatama/sieve-core) | Base logic / plugin host for the ecosystem | — |
+| [sieve-lens](https://github.com/neguseatama/sieve-lens) | Observes invisible content & hidden prompts in documents | → redact via `--from-lens` |
+| [sieve-scope](https://github.com/neguseatama/sieve-scope) | Detects structurally similar code pairs | — |
+| [sieve-referee](https://github.com/neguseatama/sieve-referee) | Detects paraphrased / reused text pairs | — |
+| [sieve-redact](https://github.com/neguseatama/sieve-redact) | Masks sensitive regions (text & PNG) with receipts | ← lens, → tray |
+| [sieve-tray](https://github.com/neguseatama/sieve-tray) | Desktop front-end that routes files to the right engine | ← all engines |
+
+Observation → masking in one pass: Lens finds what a human can't see,
+Redact removes it with a receipt that proves nothing else changed.
+
 ## 🔥 Features
 
 ### Six redaction modes
