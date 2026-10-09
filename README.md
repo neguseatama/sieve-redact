@@ -1,4 +1,4 @@
-# Sieve Redact v0.4
+# Sieve Redact v0.5
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -59,6 +59,28 @@ Companion tool to [Sieve Lens](https://github.com/neguseatama/sieve-lens)
 | `email` | Email addresses (ASCII) |
 | `chars` | All occurrences of given codepoints (`U+200B,U+00AD` form) |
 
+### Image masking (`--region`)
+
+PNG images (8-bit RGB/RGBA, non-interlaced, non-animated) are masked by
+explicit regions: `--region x,y,w,h:MODE[:ARG]` (repeatable; overlapping
+regions are discarded in declaration order; zero-area or out-of-bounds
+regions are usage errors; `--rule` cannot be combined with `--region`).
+
+| MODE | Effect |
+|------|--------|
+| `delete` | opaque white fill |
+| `mosaic` | block average over all channels (blocks align to the region origin; ARG = block size, default 8) |
+| `noise` | per-pixel deterministic replacement — SHA-256(`img:x:y:R,G,B`) drives the new RGB; alpha is kept, so semi-transparent pixels keep their visibility (content changes, visibility does not) |
+| `label` | black band with `[REDACTED]n` (bundled bitmap font) |
+| `decor` | 2px border in the ARG color (RRGGBB hex) |
+| `replace` | ARG text drawn on a white fill (bundled bitmap font) |
+
+Image receipts set `byte_integrity_verified` to `null` (not applicable —
+PNG re-encoding changes file bytes structurally) and report pixel
+integrity outside every region as `pixel_integrity_verified`; `--strict`
+exits 3 when it fails. File metadata (EXIF etc.) is always dropped on
+save — a privacy-friendly default by design.
+
 ### Word-unit matching (`+` prefix)
 
 `太郎:label` also matches the `太郎` inside `田中太郎`; `太郎:+label`
@@ -90,14 +112,17 @@ both alphanumeric, cause rejection).
 Example receipt (stdout) — `in.txt` contains `x秘密y`, run with
 `--rule "秘密:delete"`:
 
-    Sieve Redact v0.4 — レシート
+    Sieve Redact v0.5 — レシート
     入力: 8 バイト -> 出力: 2 バイト
     redact 件数: 1
       #1 rule=1 matcher=literal mode=delete pos=1..7 len=6B -> 0B sha256=062a2931da68...
     他バイト完全性: 検証済み
     出力内パターン残留: none
 
-The sensitive body never appears in the receipt — hashes only.
+The sensitive body never appears in the receipt — hashes only. In
+image mode (`--region`) `byte_integrity_verified` is `null` (not
+applicable) and pixel integrity is measured by
+`pixel_integrity_verified` instead.
 
 ### Integration with Sieve Lens
 
@@ -139,7 +164,10 @@ Lens integration, CLI boundaries). No additional dependencies.
 2. **No case-insensitive matching** — matching is case-sensitive
 3. **No automatic sensitive-data detection** — the user specifies what is
    sensitive (by design)
-4. **Text only** — PDF, images and Office formats are not supported
+4. **Text and PNG images** — PDF and Office formats are not supported;
+   image masking is PNG-only (8-bit RGB/RGBA) and JPEG is explicitly
+   out of scope; PDF masking is out of scope (observation is Sieve
+   Lens's domain)
 5. **Full-width digits and non-ASCII hyphens are out of scope** for
    postal/phone
 6. **4-digit area codes starting with 08/09 (except `0800`) and short
