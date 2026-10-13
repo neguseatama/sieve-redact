@@ -1,4 +1,4 @@
-# Sieve Redact v0.5
+# Sieve Redact v0.6.0
 
 文書に含まれる機密情報を、**決定論的に**、そして**他バイト完全性を守って**
 マスクするコマンドラインツールです。
@@ -126,7 +126,7 @@ region は宣言順に破棄・面積 0 や画像範囲外は使用法エラー�
 
 レシート (標準出力) の例 — `in.txt` が `x秘密y`・`--rule "秘密:delete"` の場合:
 
-    Sieve Redact v0.5 — レシート
+    Sieve Redact v0.6.0 — レシート
     入力: 8 バイト -> 出力: 2 バイト
     redact 件数: 1
       #1 rule=1 matcher=literal mode=delete pos=1..7 len=6B -> 0B sha256=062a2931da68...
@@ -165,7 +165,7 @@ region は宣言順に破棄・面積 0 や画像範囲外は使用法エラー�
 
     python -m unittest discover -s tests -v
 
-113 テスト (5 様式・組込文字種・語単位一致・設定ファイル・Lens 連携・
+153 テスト (5 様式・組込文字種・語単位一致・設定ファイル・Lens 連携・
 CLI 境界) を内蔵。追加の依存はありません。
 
 ---
