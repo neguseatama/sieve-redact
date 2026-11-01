@@ -1,0 +1,1126 @@
+{
+  "contract": "sieve-schema-contract-v1",
+  "corpus_version": "1",
+  "description": "Sieve Schema Contract v1 conformance corpus. Canonical copy lives in sieve-lens tests/corpus/; replicas in other Sieve tools' test suites are pinned by sha256. Each tool runs the layers it implements: 'json' cases need the strict JSON layer (violations tags: dup_key / nan_inf / bom; tools without a layer skip the tagged case), 'schema' cases need the validator. error_pointer is an RFC 6901 JSON Pointer pinned for reject cases that have one.",
+  "cases": [
+    {
+      "id": "json-accept-mixed",
+      "layer": "json",
+      "input_text": "{\"a\": [1, 2.5, \"x\", true, null], \"b\": {\"c\": 1}}",
+      "expect": "accept"
+    },
+    {
+      "id": "json-reject-duplicate-key",
+      "layer": "json",
+      "input_text": "{\"a\": 1, \"a\": 2}",
+      "expect": "reject",
+      "violations": [
+        "dup_key"
+      ]
+    },
+    {
+      "id": "json-reject-nan",
+      "layer": "json",
+      "input_text": "{\"x\": NaN}",
+      "expect": "reject",
+      "violations": [
+        "nan_inf"
+      ]
+    },
+    {
+      "id": "json-reject-infinity",
+      "layer": "json",
+      "input_text": "{\"x\": Infinity}",
+      "expect": "reject",
+      "violations": [
+        "nan_inf"
+      ]
+    },
+    {
+      "id": "json-reject-negative-infinity",
+      "layer": "json",
+      "input_text": "{\"x\": -Infinity}",
+      "expect": "reject",
+      "violations": [
+        "nan_inf"
+      ]
+    },
+    {
+      "id": "json-reject-nan-in-array",
+      "layer": "json",
+      "input_text": "{\"x\": [1, NaN]}",
+      "expect": "reject",
+      "violations": [
+        "nan_inf"
+      ]
+    },
+    {
+      "id": "json-reject-bom",
+      "layer": "json",
+      "input_text": "﻿{\"a\": 1}",
+      "expect": "reject",
+      "violations": [
+        "bom"
+      ]
+    },
+    {
+      "id": "schema-accept-full-structure",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "name": {
+            "type": "string",
+            "min_len": 1
+          },
+          "version": {
+            "required": false,
+            "type": "integer"
+          },
+          "tags": {
+            "required": false,
+            "type": "array",
+            "item_type": "string"
+          },
+          "patterns": {
+            "type": "array",
+            "item_schema": {
+              "type": "object",
+              "keys": {
+                "match": {
+                  "required": false,
+                  "type": "string",
+                  "enum": [
+                    "literal",
+                    "regex"
+                  ]
+                },
+                "pattern": {
+                  "type": "string",
+                  "min_len": 1
+                }
+              }
+            }
+          }
+        }
+      },
+      "input": {
+        "name": "demo",
+        "version": 1,
+        "tags": [
+          "a",
+          "b"
+        ],
+        "patterns": [
+          {
+            "pattern": "x"
+          },
+          {
+            "pattern": "y",
+            "match": "regex"
+          }
+        ]
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-int-as-number",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "number"
+          }
+        }
+      },
+      "input": {
+        "v": 3
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-enum",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "match": {
+            "type": "string",
+            "enum": [
+              "literal",
+              "regex"
+            ]
+          }
+        }
+      },
+      "input": {
+        "match": "literal"
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-min-bound",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "number",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "input": {
+        "v": 0
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-max-bound",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "number",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "input": {
+        "v": 1
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-cross-one-of-two",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "name": {
+            "required": false,
+            "type": "string"
+          },
+          "width": {
+            "required": false,
+            "type": "integer"
+          },
+          "bins": {
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "cross": {
+          "mutually_exclusive": [
+            [
+              "width",
+              "bins"
+            ]
+          ]
+        }
+      },
+      "input": {
+        "width": 3
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-cross-none-present",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "name": {
+            "required": false,
+            "type": "string"
+          },
+          "width": {
+            "required": false,
+            "type": "integer"
+          },
+          "bins": {
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "cross": {
+          "mutually_exclusive": [
+            [
+              "width",
+              "bins"
+            ]
+          ]
+        }
+      },
+      "input": {
+        "name": "x"
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-null",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "null"
+          }
+        }
+      },
+      "input": {
+        "v": null
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-empty-object-keys",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {}
+      },
+      "input": {},
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-optional-absent",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "k": {
+            "type": "string"
+          },
+          "opt": {
+            "required": false,
+            "type": "string"
+          }
+        }
+      },
+      "input": {
+        "k": "v"
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-accept-enum-int-no-type",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "enum": [
+              1
+            ]
+          }
+        }
+      },
+      "input": {
+        "v": 1
+      },
+      "expect": "accept"
+    },
+    {
+      "id": "schema-reject-bool-as-integer",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "n": {
+            "type": "integer"
+          }
+        }
+      },
+      "input": {
+        "n": true
+      },
+      "expect": "reject",
+      "error_pointer": "/n"
+    },
+    {
+      "id": "schema-reject-bool-as-number",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "flag": {
+            "type": "number"
+          }
+        }
+      },
+      "input": {
+        "flag": false
+      },
+      "expect": "reject",
+      "error_pointer": "/flag"
+    },
+    {
+      "id": "schema-reject-bool-as-string",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "s": {
+            "type": "string"
+          }
+        }
+      },
+      "input": {
+        "s": true
+      },
+      "expect": "reject",
+      "error_pointer": "/s"
+    },
+    {
+      "id": "schema-reject-float-as-integer",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "n": {
+            "type": "integer"
+          }
+        }
+      },
+      "input": {
+        "n": 1.0
+      },
+      "expect": "reject",
+      "error_pointer": "/n"
+    },
+    {
+      "id": "schema-reject-enum-bool-vs-int",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "enum": [
+              1
+            ]
+          }
+        }
+      },
+      "input": {
+        "v": true
+      },
+      "expect": "reject",
+      "error_pointer": "/v"
+    },
+    {
+      "id": "schema-reject-required-missing",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "k": {
+            "type": "string"
+          }
+        }
+      },
+      "input": {},
+      "expect": "reject",
+      "error_pointer": "/k"
+    },
+    {
+      "id": "schema-reject-unknown-key",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "a": {
+            "type": "string"
+          }
+        }
+      },
+      "input": {
+        "a": "x",
+        "extra": 1
+      },
+      "expect": "reject",
+      "error_pointer": "/extra"
+    },
+    {
+      "id": "schema-reject-unknown-key-nested",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "items": {
+            "type": "array",
+            "item_schema": {
+              "type": "object",
+              "keys": {
+                "id": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "input": {
+        "items": [
+          {
+            "id": "x"
+          },
+          {
+            "id": "y",
+            "ghost": 1
+          }
+        ]
+      },
+      "expect": "reject",
+      "error_pointer": "/items/1/ghost"
+    },
+    {
+      "id": "schema-reject-enum-mismatch",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "match": {
+            "type": "string",
+            "enum": [
+              "literal",
+              "regex"
+            ]
+          }
+        }
+      },
+      "input": {
+        "match": "fuzzy"
+      },
+      "expect": "reject",
+      "error_pointer": "/match"
+    },
+    {
+      "id": "schema-reject-below-min",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "number",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "input": {
+        "v": -0.5
+      },
+      "expect": "reject",
+      "error_pointer": "/v"
+    },
+    {
+      "id": "schema-reject-above-max",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "number",
+            "min": 0,
+            "max": 1
+          }
+        }
+      },
+      "input": {
+        "v": 1.5
+      },
+      "expect": "reject",
+      "error_pointer": "/v"
+    },
+    {
+      "id": "schema-reject-min-len",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "s": {
+            "type": "string",
+            "min_len": 1
+          }
+        }
+      },
+      "input": {
+        "s": ""
+      },
+      "expect": "reject",
+      "error_pointer": "/s"
+    },
+    {
+      "id": "schema-reject-max-len",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "list": {
+            "type": "array",
+            "max_len": 2
+          }
+        }
+      },
+      "input": {
+        "list": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expect": "reject",
+      "error_pointer": "/list"
+    },
+    {
+      "id": "schema-reject-item-type",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "list": {
+            "type": "array",
+            "item_type": "integer"
+          }
+        }
+      },
+      "input": {
+        "list": [
+          1,
+          2,
+          "x"
+        ]
+      },
+      "expect": "reject",
+      "error_pointer": "/list/2"
+    },
+    {
+      "id": "schema-reject-item-schema",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "obs": {
+            "type": "array",
+            "item_schema": {
+              "type": "object",
+              "keys": {
+                "count": {
+                  "type": "integer"
+                }
+              }
+            }
+          }
+        }
+      },
+      "input": {
+        "obs": [
+          {
+            "count": "1"
+          }
+        ]
+      },
+      "expect": "reject",
+      "error_pointer": "/obs/0/count"
+    },
+    {
+      "id": "schema-reject-cross-both-present",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "name": {
+            "required": false,
+            "type": "string"
+          },
+          "width": {
+            "required": false,
+            "type": "integer"
+          },
+          "bins": {
+            "required": false,
+            "type": "integer"
+          }
+        },
+        "cross": {
+          "mutually_exclusive": [
+            [
+              "width",
+              "bins"
+            ]
+          ]
+        }
+      },
+      "input": {
+        "width": 3,
+        "bins": 4
+      },
+      "expect": "reject",
+      "error_pointer": ""
+    },
+    {
+      "id": "schema-reject-no-coercion-string-to-integer",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "n": {
+            "type": "integer"
+          }
+        }
+      },
+      "input": {
+        "n": "3"
+      },
+      "expect": "reject",
+      "error_pointer": "/n"
+    },
+    {
+      "id": "schema-reject-no-coercion-int-to-string",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "s": {
+            "type": "string"
+          }
+        }
+      },
+      "input": {
+        "s": 123
+      },
+      "expect": "reject",
+      "error_pointer": "/s"
+    },
+    {
+      "id": "schema-reject-null-mismatch",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "null"
+          }
+        }
+      },
+      "input": {
+        "v": 0
+      },
+      "expect": "reject",
+      "error_pointer": "/v"
+    },
+    {
+      "id": "schema-reject-inf-by-max",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "v": {
+            "type": "number",
+            "min": 0,
+            "max": 10
+          }
+        }
+      },
+      "expect": "reject",
+      "error_pointer": "/v",
+      "input_text": "{\"v\": 1e400}"
+    },
+    {
+      "id": "schema-reject-depth-bounded",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "a": {
+            "type": "object",
+            "keys": {
+              "a": {
+                "type": "object",
+                "keys": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "input": {
+        "a": {
+          "a": {
+            "a": {
+              "a": {
+                "a": {
+                  "a": {
+                    "a": {
+                      "a": {
+                        "a": {
+                          "a": {
+                            "a": {
+                              "a": {
+                                "a": {
+                                  "a": {
+                                    "a": {
+                                      "a": {
+                                        "a": {
+                                          "a": {
+                                            "a": {
+                                              "a": {
+                                                "a": {
+                                                  "a": {
+                                                    "a": {
+                                                      "a": {
+                                                        "a": {
+                                                          "a": {
+                                                            "a": {
+                                                              "a": {
+                                                                "a": {
+                                                                  "a": {
+                                                                    "a": {
+                                                                      "a": {
+                                                                        "a": {
+                                                                          "a": {
+                                                                            "a": {
+                                                                              "a": {
+                                                                                "a": {
+                                                                                  "a": {
+                                                                                    "a": {
+                                                                                      "a": {
+                                                                                        "a": {
+                                                                                          "a": {
+                                                                                            "a": {
+                                                                                              "a": {
+                                                                                                "a": {
+                                                                                                  "a": {
+                                                                                                    "a": {
+                                                                                                      "a": {
+                                                                                                        "a": {
+                                                                                                          "a": {
+                                                                                                            "a": {
+                                                                                                              "a": {
+                                                                                                                "a": {
+                                                                                                                  "a": {
+                                                                                                                    "a": {
+                                                                                                                      "a": {
+                                                                                                                        "a": {
+                                                                                                                          "a": {
+                                                                                                                            "a": {
+                                                                                                                              "a": {
+                                                                                                                                "a": {
+                                                                                                                                  "a": {
+                                                                                                                                    "a": {
+                                                                                                                                      "a": {
+                                                                                                                                        "a": {
+                                                                                                                                          "a": {
+                                                                                                                                            "a": {
+                                                                                                                                              "a": {
+                                                                                                                                                "a": {
+                                                                                                                                                  "a": {
+                                                                                                                                                    "a": {
+                                                                                                                                                      "a": {
+                                                                                                                                                        "a": {
+                                                                                                                                                          "a": {
+                                                                                                                                                            "a": {
+                                                                                                                                                              "a": {
+                                                                                                                                                                "a": {
+                                                                                                                                                                  "a": {
+                                                                                                                                                                    "a": {
+                                                                                                                                                                      "a": {
+                                                                                                                                                                        "a": {
+                                                                                                                                                                          "a": {
+                                                                                                                                                                            "a": {
+                                                                                                                                                                              "a": {
+                                                                                                                                                                                "a": {
+                                                                                                                                                                                  "a": {
+                                                                                                                                                                                    "a": {
+                                                                                                                                                                                      "a": {
+                                                                                                                                                                                        "a": {
+                                                                                                                                                                                          "a": {
+                                                                                                                                                                                            "a": {
+                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                                                                                                  "a": {
+                                                                                                                                                                                                                                                                                                    "a": {
+                                                                                                                                                                                                                                                                                                      "a": {
+                                                                                                                                                                                                                                                                                                        "a": {
+                                                                                                                                                                                                                                                                                                          "a": {
+                                                                                                                                                                                                                                                                                                            "a": {
+                                                                                                                                                                                                                                                                                                              "a": {
+                                                                                                                                                                                                                                                                                                                "a": {
+                                                                                                                                                                                                                                                                                                                  "a": 1
+                                                                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                                      }
+                                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                                      }
+                                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                                      }
+                                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                                      }
+                                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                                      }
+                                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                                }
+                                                                                                                                                                                                                              }
+                                                                                                                                                                                                                            }
+                                                                                                                                                                                                                          }
+                                                                                                                                                                                                                        }
+                                                                                                                                                                                                                      }
+                                                                                                                                                                                                                    }
+                                                                                                                                                                                                                  }
+                                                                                                                                                                                                                }
+                                                                                                                                                                                                              }
+                                                                                                                                                                                                            }
+                                                                                                                                                                                                          }
+                                                                                                                                                                                                        }
+                                                                                                                                                                                                      }
+                                                                                                                                                                                                    }
+                                                                                                                                                                                                  }
+                                                                                                                                                                                                }
+                                                                                                                                                                                              }
+                                                                                                                                                                                            }
+                                                                                                                                                                                          }
+                                                                                                                                                                                        }
+                                                                                                                                                                                      }
+                                                                                                                                                                                    }
+                                                                                                                                                                                  }
+                                                                                                                                                                                }
+                                                                                                                                                                              }
+                                                                                                                                                                            }
+                                                                                                                                                                          }
+                                                                                                                                                                        }
+                                                                                                                                                                      }
+                                                                                                                                                                    }
+                                                                                                                                                                  }
+                                                                                                                                                                }
+                                                                                                                                                              }
+                                                                                                                                                            }
+                                                                                                                                                          }
+                                                                                                                                                        }
+                                                                                                                                                      }
+                                                                                                                                                    }
+                                                                                                                                                  }
+                                                                                                                                                }
+                                                                                                                                              }
+                                                                                                                                            }
+                                                                                                                                          }
+                                                                                                                                        }
+                                                                                                                                      }
+                                                                                                                                    }
+                                                                                                                                  }
+                                                                                                                                }
+                                                                                                                              }
+                                                                                                                            }
+                                                                                                                          }
+                                                                                                                        }
+                                                                                                                      }
+                                                                                                                    }
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
+                                                                                                          }
+                                                                                                        }
+                                                                                                      }
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "expect": "reject",
+      "error_pointer": "/a/a/a"
+    },
+    {
+      "id": "schema-spec-unknown-key",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {},
+        "typo": 1
+      },
+      "input": {},
+      "expect": "reject"
+    },
+    {
+      "id": "schema-spec-item-type-and-schema",
+      "layer": "schema",
+      "schema": {
+        "type": "array",
+        "item_type": "string",
+        "item_schema": {
+          "type": "object",
+          "keys": {}
+        }
+      },
+      "input": [],
+      "expect": "reject"
+    },
+    {
+      "id": "schema-spec-cross-undeclared-field",
+      "layer": "schema",
+      "schema": {
+        "type": "object",
+        "keys": {
+          "a": {
+            "type": "string"
+          }
+        },
+        "cross": {
+          "mutually_exclusive": [
+            [
+              "a",
+              "ghost"
+            ]
+          ]
+        }
+      },
+      "input": {},
+      "expect": "reject"
+    },
+    {
+      "id": "schema-spec-bad-type-name",
+      "layer": "schema",
+      "schema": {
+        "type": "str"
+      },
+      "input": {},
+      "expect": "reject"
+    },
+    {
+      "id": "schema-spec-min-on-string",
+      "layer": "schema",
+      "schema": {
+        "type": "string",
+        "min": 0
+      },
+      "input": "",
+      "expect": "reject"
+    }
+  ]
+}

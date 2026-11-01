@@ -199,9 +199,10 @@ in ascending order of position.
 
     python -m unittest discover -s tests -v
 
-248 tests (five modes, built-in matchers, word-unit matching,
+251 tests (five modes, built-in matchers, word-unit matching,
 case-insensitive matching, the normalization view, image masking with
-JPEG input, config files, Lens integration with the schema gate, CLI
+JPEG input, config files, Lens integration with the schema gate, the
+Schema Contract v1 conformance corpus replica (JSON layer), CLI
 boundaries). No additional dependencies.
 
 ---
