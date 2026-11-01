@@ -33,6 +33,7 @@ VERSION = "0.7.0"
 
 REGION_MODES = ("delete", "mosaic", "label", "noise", "decor", "replace")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SIGNATURE = b"\xff\xd8\xff"
 LABEL_PREFIX_DEFAULT = "[REDACTED]"
 
 try:
@@ -99,6 +100,45 @@ def check_png_input(data):
     width = int.from_bytes(data[16:20], "big")
     height = int.from_bytes(data[20:24], "big")
     return width, height
+
+
+JPEG_SOF_MARKERS = frozenset(
+    (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+     0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF))
+
+
+def check_jpeg_input(data):
+    # Validate raw bytes as a JPEG (SOI + frame header) and return
+    # (width, height) from the SOF segment without decoding pixels.
+    # This gate only decides "is this a JPEG"; Pillow remains the decoder.
+    if len(data) < 4 or data[:3] != JPEG_SIGNATURE:
+        raise ValueError("input is not a JPEG file")
+    i = 2
+    n = len(data)
+    while i + 4 <= n:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker == 0xFF:
+            i += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD9:
+            i += 2
+            continue
+        seglen = int.from_bytes(data[i + 2:i + 4], "big")
+        if seglen < 2:
+            raise ValueError("invalid JPEG segment length")
+        if marker in JPEG_SOF_MARKERS:
+            if i + 2 + seglen > n or seglen < 8:
+                raise ValueError("truncated JPEG frame header")
+            height = int.from_bytes(data[i + 5:i + 7], "big")
+            width = int.from_bytes(data[i + 7:i + 9], "big")
+            if width == 0 or height == 0:
+                raise ValueError("invalid JPEG dimensions")
+            return width, height
+        i += 2 + seglen
+    raise ValueError("unsupported JPEG (frame header not found)")
 
 
 def _rects_overlap(a, b):
@@ -999,7 +1039,7 @@ def build_argparser():
     parser.add_argument(
         "--region", action="append", default=None,
         metavar="x,y,w,h:MODE[:ARG]",
-        help="image region masking (PNG only): x,y,w,h then MODE and optional ARG; repeatable; overlapping regions discarded")
+        help="image region masking (PNG/JPEG input; output is always PNG): x,y,w,h then MODE and optional ARG; repeatable; overlapping regions discarded")
     return parser
 
 
@@ -1064,9 +1104,15 @@ def main_image(args):
         return 1
     try:
         width, height = check_png_input(data)
-    except ValueError as exc:
-        print("sieve-redact: error: %s" % exc, file=sys.stderr)
-        return 2
+        input_format = "PNG"
+    except ValueError as png_exc:
+        try:
+            width, height = check_jpeg_input(data)
+            input_format = "JPEG"
+        except ValueError as jpeg_exc:
+            detail = jpeg_exc if data[:3] == JPEG_SIGNATURE else png_exc
+            print("sieve-redact: error: %s" % detail, file=sys.stderr)
+            return 2
     for r in regions:
         if r["x"] + r["w"] > width or r["y"] + r["h"] > height:
             print("sieve-redact: error: region %d,%d,%d,%d exceeds image "
@@ -1074,10 +1120,22 @@ def main_image(args):
                                     width, height), file=sys.stderr)
             return 2
     import io
-    img = Image.open(io.BytesIO(data))
-    img.load()
+    try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception as exc:
+        # JPEG payloads are not byte-prevalidated; decode failures must
+        # surface as a clean usage error, never a traceback.
+        print("sieve-redact: error: cannot decode image: %s" % exc,
+              file=sys.stderr)
+        return 2
     if getattr(img, "is_animated", False) or getattr(img, "n_frames", 1) > 1:
-        print("sieve-redact: error: animated PNG is not supported",
+        print("sieve-redact: error: animated image is not supported",
+              file=sys.stderr)
+        return 2
+    if img.mode not in ("RGB", "RGBA"):
+        print("sieve-redact: error: unsupported image color mode: %s "
+              "(RGB/RGBA PNG or RGB JPEG only)" % img.mode,
               file=sys.stderr)
         return 2
 
@@ -1161,7 +1219,7 @@ def main_image(args):
     receipt = {
         "input_bytes": len(data),
         "output_bytes": out_bytes,
-        "input_format": "PNG",
+        "input_format": input_format,
         "input_mode": img.mode,
         "redactions": [],
         "rects": rect_rows,
@@ -1179,9 +1237,9 @@ def main_image(args):
             print("sieve-redact: error: cannot write receipt: %s" % exc,
                   file=sys.stderr)
             return 1
-    print("Sieve Redact v0.5 — レシート")
-    print("入力: PNG %dx%d (%s) -> 出力: PNG %dx%d"
-          % (width, height, img.mode, width, height))
+    print("Sieve Redact v%s — レシート" % VERSION)
+    print("入力: %s %dx%d (%s) -> 出力: PNG %dx%d"
+          % (input_format, width, height, img.mode, width, height))
     print("redact regions: %d (discarded overlaps: %d)"
           % (len(accepted), len(regions) - len(accepted)))
     print("完全性: %s(画素)"

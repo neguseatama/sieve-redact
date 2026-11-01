@@ -1,12 +1,14 @@
-"""Sieve Redact v0.5 — image mode (PNG) acceptance tests.
+"""Sieve Redact — image mode (PNG/JPEG) acceptance tests.
 
 Spec summary (pinned by these tests):
   - --region x,y,w,h:MODE[:ARG] (1 region = 1 rect = 1 MODE; declaration
     order; overlaps discarded per the text-mode rules; zero-area and
     out-of-bounds regions are rc=2; --rule with image input and --region
     with text input are rc=2)
-  - PNG only: 8bit RGB/RGBA, non-interlaced, non-animated; JPEG and all
-    other formats rejected; metadata dropped on save
+  - Input: PNG (8bit RGB/RGBA, non-interlaced, non-animated) or RGB
+    JPEG (accepted since v0.8); all other formats rejected; output is
+    always PNG (JPEG pixels are preserved, never re-compressed as
+    JPEG); metadata dropped on save
   - MODE semantics: delete = opaque white fill; mosaic = block average
     over all channels (blocks align to the region origin and clip to it;
     ARG = block size, default 8); noise = per-pixel
@@ -175,14 +177,18 @@ class RegionUsage(ImageBase):
 
 
 class FormatLimits(ImageBase):
-    def test_jpeg_rejected(self):
+    def test_jpeg_accepted_content_based(self):
+        # v0.5 pinned the rejection of JPEG input; v0.8 accepts it (the
+        # output is always PNG). JPEG bytes under a .png name must still
+        # be content-sniffed, not extension-trusted.
         self.gate()
-        p = self.dir / "in.png"  # JPEG bytes under a .png name:
-        # rejection must be content-based, not extension-based
+        p = self.dir / "in.png"  # JPEG bytes under a .png name
         Image.new("RGB", (4, 4), (9, 9, 9)).save(p, format="JPEG")
-        proc = self.run_cli([str(p), "-o", str(self.dir / "o.png"),
+        out = self.dir / "o.png"
+        proc = self.run_cli([str(p), "-o", str(out),
                              "--region", "0,0,2,2:delete"])
-        self.assertEqual(proc.returncode, 2, proc.stderr)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertTrue(out.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"))
 
     def test_palette_png_rejected(self):
         self.gate()
