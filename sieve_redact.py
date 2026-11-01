@@ -7,6 +7,9 @@ v0.2: 組込文字種 --builtin、語単位一致 '+' 接頭辞、
       (tests/test_v02_*.py)
 v0.3: replace 様式、--from-lens twin 生成、
       phone-jp 拡張形
+v0.7: 全角・異種ハイフンの正規化ビュー照合 (builtin matcher)・
+      '~' 接頭辞による大小無視一致・phone-jp の 08/09 4 桁
+      市外局番と短縮番号
 
 コア不変条件:
   - 依存は stdlib のみ / 決定的 / UTF-8 のみ / オフライン / テレメトリなし
@@ -167,6 +170,32 @@ def _is_ascii_alnum(ch):
 
 def _all_ascii_digits(s):
     return all(_is_ascii_digit(ch) for ch in s)
+
+
+# 正規化ビュー (v0.7): postal-jp / phone-jp / email は正規化して照合する。
+# 対応表は 1 文字 → 1 文字に限定する (位置対応を保つため。NFKC のような
+# 非 1:1 変換は使わない)。
+#   - 全角 ASCII ブロック U+FF01..FF5E → U+0021..007E
+#     (全角数字・全角英字・全角ハイフン U+FF0D・全角アット U+FF20 を含む)
+#   - 異種ハイフン U+2010..2015 / U+2212 → U+002D ('-')
+_NORMALIZED_BUILTINS = ("postal-jp", "phone-jp", "email")
+_HYPHEN_CODEPOINTS = frozenset((0x2010, 0x2011, 0x2012, 0x2013,
+                                0x2014, 0x2015, 0x2212))
+
+
+def normalize_char(ch):
+    """1 文字の正規化 (1:1 対応)。対応表外はそのまま。"""
+    cp = ord(ch)
+    if 0xFF01 <= cp <= 0xFF5E:
+        return chr(cp - 0xFEE0)
+    if cp in _HYPHEN_CODEPOINTS:
+        return "-"
+    return ch
+
+
+def normalize_text(text):
+    """正規化ビュー (1 文字 → 1 文字のため長さは入力と同一)。"""
+    return "".join(normalize_char(ch) for ch in text)
 
 
 # --------------------------------------------------------------- ルール解析
@@ -628,16 +657,24 @@ def match_chars(text, canon):
     return matches
 
 
-def enumerate_matches(text, rule):
-    """1 matcher の全一致を左端優先・非重複で列挙する。"""
+def enumerate_matches(text, rule, norm_text=None):
+    """1 matcher の全一致を左端優先・非重複で列挙する。
+
+    postal-jp / phone-jp / email は正規化ビューで照合する。正規化は
+    1:1 なので戻り値の位置は元の text と同一。norm_text は呼び出し
+    側で再利用する場合に渡す (省略時は内部で計算)。literal と
+    chars は常に元の text で照合する (正規化の対象外)。
+    """
     if rule.kind == "literal":
         return find_matches(text, rule.pattern)
-    if rule.name == "postal-jp":
-        return match_postal_jp(text)
-    if rule.name == "phone-jp":
-        return match_phone_jp(text)
-    if rule.name == "email":
-        return match_email(text)
+    if rule.name in _NORMALIZED_BUILTINS:
+        if norm_text is None:
+            norm_text = normalize_text(text)
+        if rule.name == "postal-jp":
+            return match_postal_jp(norm_text)
+        if rule.name == "phone-jp":
+            return match_phone_jp(norm_text)
+        return match_email(norm_text)
     return match_chars(text, rule.pattern)  # chars
 
 
@@ -675,11 +712,14 @@ def apply_redactions(text, rules):
       - redactions の start/end/length は入力バイトオフセット
       - label の連番は適用順 (= 位置昇順) で全ルール通し
       - 語単位のマッチは列挙時に境界棄却される
+      - postal-jp / phone-jp / email は正規化ビューで照合し、マスクは
+        元テキストの区間に適用する (レシートの位置も元テキスト基準)
     """
+    norm_text = normalize_text(text)
     # ルールは宣言順に試行し、既確定区間と重なる後発マッチは捨てる
     confirmed = []  # (開始文字位置, 長さ, Rule)
     for rule in rules:
-        for start, length in enumerate_matches(text, rule):
+        for start, length in enumerate_matches(text, rule, norm_text):
             if rule.word_unit and not word_unit_ok(text, start, length):
                 continue
             end = start + length
@@ -717,6 +757,11 @@ def apply_redactions(text, rules):
             pieces = []
             for k, ch in enumerate(seg):
                 pool_name = rule.arg if rule.arg is not None else classify(ch)
+                if (pool_name is None and rule.kind == "builtin"
+                        and rule.name in _NORMALIZED_BUILTINS):
+                    # 正規化ビューで照合したクラス外文字 (全角数字など)
+                    # は正規化後のクラスで same-class 置換する
+                    pool_name = classify(norm_text[start + k])
                 if pool_name is None:
                     pieces.append(ch)  # クラス外は same-class では据え置き
                 else:
@@ -739,6 +784,9 @@ def apply_redactions(text, rules):
         }
         if rule.word_unit:
             entry["word_unit"] = True  # additive (語単位のみ出現)
+        if (rule.kind == "builtin" and rule.name in _NORMALIZED_BUILTINS
+                and seg != norm_text[start:start + length]):
+            entry["normalized"] = True  # additive (正規化ビューで照合)
         redactions.append(entry)
         pos = start + length
     out_parts.append(text[pos:])
@@ -812,12 +860,15 @@ def human_receipt(lang, input_byte_len, out_bytes, redactions,
                  else "他バイト完全性: 検証失敗")
         appear = f"出力内パターン残留: {appearance}"
     for n, r in enumerate(redactions, 1):
+        extra = ""
+        if r.get("normalized"):
+            extra += " normalized"
         lines.append(
             f"  #{n} rule={r['rule_index']} matcher={r['matcher']}"
             f" mode={r['mode']}"
             f" pos={r['start']}..{r['end']} len={r['length']}B"
             f" -> {r['replacement_length']}B"
-            f" sha256={r['content_sha256'][:12]}...")
+            f" sha256={r['content_sha256'][:12]}...{extra}")
     lines.append(integ)
     lines.append(appear)
     return "\n".join(lines)
