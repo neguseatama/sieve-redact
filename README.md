@@ -1,4 +1,4 @@
-# Sieve Redact v0.6.0
+# Sieve Redact v0.7.0
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -74,9 +74,16 @@ Redact removes it with a receipt that proves nothing else changed.
 | NAME | Target |
 |------|--------|
 | `postal-jp` | Japanese postal codes `NNN-NNNN` |
-| `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `050-…` / `0120-…` / 4-digit area codes `01XX-07XX`) |
+| `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `050-…` / `0120-…` / 4-digit area codes `01XX-09XX`) and short numbers (`104` / `106` / `110` / `117` / `118` / `119` / `171`) |
 | `email` | Email addresses (ASCII) |
 | `chars` | All occurrences of given codepoints (`U+200B,U+00AD` form) |
+
+`postal-jp` / `phone-jp` / `email` match through a 1:1 normalization
+view: full-width ASCII forms (`１２３`, `ＡＢＣ`, `－`, `＠`) and dash
+variants (U+2010–2015, U+2212) are folded to their ASCII counterparts
+before matching, while masking still applies to the original bytes
+(receipts record `normalized: true` on such spans). `chars` and
+literal rules stay exact.
 
 ### Image masking (`--region`)
 
@@ -102,11 +109,16 @@ save — a privacy-friendly default by design. Output bytes are
 deterministic across platforms and pinned in CI (with Pillow 12.3.0;
 future Pillow updates may change encoded bytes, never pixels).
 
-### Word-unit matching (`+` prefix)
+### Word-unit and case-insensitive matching (`+` / `~` prefixes)
 
 `太郎:label` also matches the `太郎` inside `田中太郎`; `太郎:+label`
 matches only at word boundaries (adjacent characters of the same class, or
 both alphanumeric, cause rejection).
+
+`Taro:~label` ignores ASCII case when matching (`TARO` / `taro` also
+match; non-ASCII stays exact). The prefixes compose in any order —
+`秘密:+~label` is word-unit plus case-insensitive. `chars` with `~`
+matches both case variants of the listed ASCII letters.
 
 ### Config files and Lens integration
 
@@ -133,7 +145,7 @@ both alphanumeric, cause rejection).
 Example receipt (stdout) — `in.txt` contains `x秘密y`, run with
 `--rule "秘密:delete"`:
 
-    Sieve Redact v0.6.0 — レシート
+    Sieve Redact v0.7.0 — レシート
     入力: 8 バイト -> 出力: 2 バイト
     redact 件数: 1
       #1 rule=1 matcher=literal mode=delete pos=1..7 len=6B -> 0B sha256=062a2931da68...
@@ -163,6 +175,10 @@ Character selection in `noise` is fully determined by:
 No seed. No environment dependence. Same input, same output, always.
 The bundled tests verify exact agreement with this formula by recomputation.
 
+The normalization view (built-in matchers) and the ASCII case folding
+(`~` rules) are per-character 1:1 mappings — they never shift positions,
+so masking still applies to the original bytes.
+
 Overlapping matches are resolved deterministically as well: rules are tried
 in declaration order, each rule scans leftmost-first, later matches that
 overlap a confirmed region are discarded, and confirmed regions are applied
@@ -174,26 +190,29 @@ in ascending order of position.
 
     python -m unittest discover -s tests -v
 
-153 tests (five modes, built-in matchers, word-unit matching, config files,
+207 tests (five modes, built-in matchers, word-unit matching,
+case-insensitive matching, the normalization view, config files,
 Lens integration, CLI boundaries). No additional dependencies.
 
 ---
 
 ## ⚠️ Known limitations
 
-1. **No regex** — patterns are literal, exact-match strings only
-2. **No case-insensitive matching** — matching is case-sensitive
-3. **No automatic sensitive-data detection** — the user specifies what is
+1. **No regex** — patterns are literal strings, optionally with ASCII
+   case-insensitive folding (`~`); no wildcards, classes or quantifiers
+2. **No automatic sensitive-data detection** — the user specifies what is
    sensitive (by design)
-4. **Text and PNG images** — PDF and Office formats are not supported;
+3. **Text and PNG images** — PDF and Office formats are not supported;
    image masking is PNG-only (8-bit RGB/RGBA) and JPEG is explicitly
    out of scope; PDF masking is out of scope (observation is Sieve
    Lens's domain)
-5. **Full-width digits and non-ASCII hyphens are out of scope** for
-   postal/phone
-6. **4-digit area codes starting with 08/09 (except `0800`) and short
-   numbers such as 117/104 are out of scope** for `phone-jp` — match
-   them explicitly with `--rule`
+4. **Normalization is 1:1 and targeted** — the built-in matchers fold
+   U+FF01..FF5E and the dash variants U+2010..2015 / U+2212 only; other
+   compatibility forms (e.g. U+3000 spaces) stay exact
+5. **phone-jp shape limits remain** — numbers without hyphens other than
+   the fixed short set (`104`/`106`/`110`/`117`/`118`/`119`/`171`) and
+   unusual digit groupings are out of scope — match them explicitly
+   with `--rule`
 
 ---
 
