@@ -44,7 +44,7 @@ Sieve は、決定的・ゼロ依存・完全ローカルという共通の設�
 | [sieve-lens](https://github.com/neguseatama/sieve-lens) | 文書内の不可視コンテンツ・隠しプロンプトを観測 | → `--from-lens` 経由で redact へ |
 | [sieve-scope](https://github.com/neguseatama/sieve-scope) | 構造的に類似したコードペアを検出 | — |
 | [sieve-referee](https://github.com/neguseatama/sieve-referee) | 言い換え・流用されたテキストペアを検出 | — |
-| [sieve-redact](https://github.com/neguseatama/sieve-redact) | 機密領域をレシートつきでマスキング (テキスト & PNG) | ← lens、→ tray |
+| [sieve-redact](https://github.com/neguseatama/sieve-redact) | 機密領域をレシートつきでマスキング (テキスト & PNG/JPEG) | ← lens、→ tray |
 | [sieve-tray](https://github.com/neguseatama/sieve-tray) | ファイルを適切なエンジンへ振り分けるデスクトップフロントエンド | ← 全エンジン |
 
 観測から排除まで 1 パスで: Lens が人間に見えないものを見つけ、
@@ -81,10 +81,12 @@ Redact が「他は何も変わっていない」ことを証明するレシー�
 
 ### 画像マスキング (`--region`)
 
-PNG 画像 (8bit RGB/RGBA・非インターレース・非アニメーション) を、明示した
-矩形で処理します: `--region x,y,w,h:MODE[:ARG]` (複数回指定可。重なる
-region は宣言順に破棄・面積 0 や画像範囲外は使用法エラー。`--rule` とは
-併用不可)。
+PNG 画像 (8bit RGB/RGBA・非インターレース・非アニメーション) と RGB の
+JPEG 画像を、明示した矩形で処理します: `--region x,y,w,h:MODE[:ARG]`
+(複数回指定可。重なる region は宣言順に破棄・面積 0 や画像範囲外は
+使用法エラー。`--rule` とは併用不可)。出力は常に PNG です — JPEG 入力を
+JPEG として再圧縮しないため、マスクが新たな圧縮劣化を生みません
+(デコード済みの画素が PNG に保全されます)。
 
 | MODE | 効果 |
 |------|--------|
@@ -96,7 +98,9 @@ region は宣言順に破棄・面積 0 や画像範囲外は使用法エラー�
 | `replace` | 白地に ARG 文字列を描画 (同梱ビットマップフォント) |
 
 画像モードのレシートでは `byte_integrity_verified` が `null` になります
-(PNG 再エンコードでファイルバイトは構造的に変化するため適用外)。矩形外の
+(出力は常に PNG のため、入力が PNG でも JPEG でもファイルバイトは
+構造的に変化します)、判別した入力形式を `input_format` (`PNG` または
+`JPEG`) に記録します。矩形外の
 画素完全性は `pixel_integrity_verified` が測定し、`--strict` はこの失敗で
 終了コード 3 となります。ファイルのメタデータ (EXIF 等) は保存時に常に
 除去します — プライバシー上有利な既定動作です。出力バイトはプラットフォーム
@@ -180,8 +184,9 @@ region は宣言順に破棄・面積 0 や画像範囲外は使用法エラー�
 
     python -m unittest discover -s tests -v
 
-207 テスト (5 様式・組込文字種・語単位一致・大小無視一致・正規化ビュー・
-設定ファイル・Lens 連携・CLI 境界) を内蔵。追加の依存はありません。
+220 テスト (5 様式・組込文字種・語単位一致・大小無視一致・正規化ビュー・
+画像マスキング (JPEG 入力を含む)・設定ファイル・Lens 連携・CLI 境界) を
+内蔵。追加の依存はありません。
 
 ---
 
@@ -190,8 +195,9 @@ region は宣言順に破棄・面積 0 や画像範囲外は使用法エラー�
 1. **正規表現非対応** — パターンは生文字列 (任意で `~` による ASCII 大小
    無視)。ワイルドカード・文字クラス・量指定子は扱わない
 2. **自動機密検出なし** — 機密はユーザーが指定する (推測しない設計)
-3. **テキストと PNG 画像** — PDF・Office 形式は非対応。画像マスキングは
-   PNG のみ (8bit RGB/RGBA) で、JPEG は明示対象外。PDF のマスキングは
+3. **テキストと画像** — PDF・Office 形式は非対応。画像マスキングは
+   PNG (8bit RGB/RGBA) と RGB JPEG を受け付け、出力は常に PNG。
+   グレースケール/CMYK・その他の形式 (GIF/WebP 等)・PDF のマスキングは
    対象外 (観測は Sieve Lens の領域)
 4. **正規化は 1:1 かつ対象を絞る** — 組込 matcher が折りたたむのは
    U+FF01..FF5E と異種ハイフン U+2010..2015 / U+2212 のみ。その他の

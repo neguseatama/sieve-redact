@@ -50,7 +50,7 @@ compose:
 | [sieve-lens](https://github.com/neguseatama/sieve-lens) | Observes invisible content & hidden prompts in documents | → redact via `--from-lens` |
 | [sieve-scope](https://github.com/neguseatama/sieve-scope) | Detects structurally similar code pairs | — |
 | [sieve-referee](https://github.com/neguseatama/sieve-referee) | Detects paraphrased / reused text pairs | — |
-| [sieve-redact](https://github.com/neguseatama/sieve-redact) | Masks sensitive regions (text & PNG) with receipts | ← lens, → tray |
+| [sieve-redact](https://github.com/neguseatama/sieve-redact) | Masks sensitive regions (text & PNG/JPEG) with receipts | ← lens, → tray |
 | [sieve-tray](https://github.com/neguseatama/sieve-tray) | Desktop front-end that routes files to the right engine | ← all engines |
 
 Observation → masking in one pass: Lens finds what a human can't see,
@@ -87,10 +87,13 @@ literal rules stay exact.
 
 ### Image masking (`--region`)
 
-PNG images (8-bit RGB/RGBA, non-interlaced, non-animated) are masked by
-explicit regions: `--region x,y,w,h:MODE[:ARG]` (repeatable; overlapping
-regions are discarded in declaration order; zero-area or out-of-bounds
-regions are usage errors; `--rule` cannot be combined with `--region`).
+PNG images (8-bit RGB/RGBA, non-interlaced, non-animated) and RGB JPEG
+images are masked by explicit regions: `--region x,y,w,h:MODE[:ARG]`
+(repeatable; overlapping regions are discarded in declaration order;
+zero-area or out-of-bounds regions are usage errors; `--rule` cannot be
+combined with `--region`). The output is always PNG — JPEG input is
+never re-compressed as JPEG, so masking adds no further loss (the
+decoded pixels are preserved into the PNG).
 
 | MODE | Effect |
 |------|--------|
@@ -102,12 +105,14 @@ regions are usage errors; `--rule` cannot be combined with `--region`).
 | `replace` | ARG text drawn on a white fill (bundled bitmap font) |
 
 Image receipts set `byte_integrity_verified` to `null` (not applicable —
-PNG re-encoding changes file bytes structurally) and report pixel
-integrity outside every region as `pixel_integrity_verified`; `--strict`
-exits 3 when it fails. File metadata (EXIF etc.) is always dropped on
-save — a privacy-friendly default by design. Output bytes are
-deterministic across platforms and pinned in CI (with Pillow 12.3.0;
-future Pillow updates may change encoded bytes, never pixels).
+the output is always PNG, so file bytes change structurally even for PNG
+input), record the detected format as `input_format` (`PNG` or `JPEG`),
+and report pixel integrity outside every region as
+`pixel_integrity_verified`; `--strict` exits 3 when it fails. File
+metadata (EXIF etc.) is always dropped on save — a privacy-friendly
+default by design. Output bytes are deterministic across platforms and
+pinned in CI (with Pillow 12.3.0; future Pillow updates may change
+encoded bytes, never pixels).
 
 ### Word-unit and case-insensitive matching (`+` / `~` prefixes)
 
@@ -190,9 +195,10 @@ in ascending order of position.
 
     python -m unittest discover -s tests -v
 
-207 tests (five modes, built-in matchers, word-unit matching,
-case-insensitive matching, the normalization view, config files,
-Lens integration, CLI boundaries). No additional dependencies.
+220 tests (five modes, built-in matchers, word-unit matching,
+case-insensitive matching, the normalization view, image masking with
+JPEG input, config files, Lens integration, CLI boundaries). No
+additional dependencies.
 
 ---
 
@@ -202,10 +208,11 @@ Lens integration, CLI boundaries). No additional dependencies.
    case-insensitive folding (`~`); no wildcards, classes or quantifiers
 2. **No automatic sensitive-data detection** — the user specifies what is
    sensitive (by design)
-3. **Text and PNG images** — PDF and Office formats are not supported;
-   image masking is PNG-only (8-bit RGB/RGBA) and JPEG is explicitly
-   out of scope; PDF masking is out of scope (observation is Sieve
-   Lens's domain)
+3. **Text and images** — PDF and Office formats are not supported;
+   image masking accepts PNG (8-bit RGB/RGBA) and RGB JPEG input and
+   always writes PNG output; grayscale/CMYK images, other formats
+   (GIF/WebP etc.) and PDF masking are out of scope (observation is
+   Sieve Lens's domain)
 4. **Normalization is 1:1 and targeted** — the built-in matchers fold
    U+FF01..FF5E and the dash variants U+2010..2015 / U+2212 only; other
    compatibility forms (e.g. U+3000 spaces) stay exact
