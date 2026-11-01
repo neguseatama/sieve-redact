@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 from collections import namedtuple
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 
 REGION_MODES = ("delete", "mosaic", "label", "noise", "decor", "replace")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"

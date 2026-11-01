@@ -133,6 +133,10 @@ matches both case variants of the listed ASCII letters.
   catalog (JSON) produced by [Sieve Lens](https://github.com/neguseatama/sieve-lens).
   Invisible characters become deletions; look-alike letters
   (Cyrillic/Greek → Latin) become replacements based on the `twin` field.
+  A zero-dependency schema gate validates the catalog strictly and
+  rejects (rc2, with JSON Pointer error paths): duplicate JSON keys,
+  `NaN`/`Infinity`, unknown keys, wrong types (including `true` as an
+  integer) and files over 1 MiB. Nothing is guessed or coerced.
 
 ---
 
@@ -195,10 +199,10 @@ in ascending order of position.
 
     python -m unittest discover -s tests -v
 
-220 tests (five modes, built-in matchers, word-unit matching,
+248 tests (five modes, built-in matchers, word-unit matching,
 case-insensitive matching, the normalization view, image masking with
-JPEG input, config files, Lens integration, CLI boundaries). No
-additional dependencies.
+JPEG input, config files, Lens integration with the schema gate, CLI
+boundaries). No additional dependencies.
 
 ---
 
@@ -220,6 +224,10 @@ additional dependencies.
    the fixed short set (`104`/`106`/`110`/`117`/`118`/`119`/`171`) and
    unusual digit groupings are out of scope — match them explicitly
    with `--rule`
+6. **--from-lens rejects unknown keys** — catalog keys outside contract
+   v1 (`lens`/`version`/`observations`, per-item
+   `kind`/`codepoint`/`count`/`positions`/`twin`) are refused, not
+   ignored; future Lens versions must extend the contract explicitly
 
 ---
 
