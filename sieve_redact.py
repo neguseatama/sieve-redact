@@ -147,7 +147,9 @@ CLASS_CHARS = {name: "".join(chr(cp) for cp in rng)
 #       chars="chars:"+正規化CP-LIST)
 # word_unit — MODE の '+' 接頭辞。境界で両端いずれかが棄却なら
 #            そのマッチ全体を棄却する
-Rule = namedtuple("Rule", "index kind name pattern seed mode arg word_unit")
+# ci — MODE の '~' 接頭辞。ASCII の大小を無視して照合する
+#      (非 ASCII はそのまま。位置対応を保つため 1:1 折りたたみのみ)
+Rule = namedtuple("Rule", "index kind name pattern seed mode arg word_unit ci")
 
 
 class UsageError(Exception):
@@ -170,6 +172,18 @@ def _is_ascii_alnum(ch):
 
 def _all_ascii_digits(s):
     return all(_is_ascii_digit(ch) for ch in s)
+
+
+def _fold_char(ch):
+    """ASCII 大文字 → 小文字 (1:1)。それ以外はそのまま。"""
+    if "A" <= ch <= "Z":
+        return chr(ord(ch) + 32)
+    return ch
+
+
+def fold_text(text):
+    """ASCII のみの大小折りたたみビュー (1:1 なので長さは入力と同一)。"""
+    return "".join(_fold_char(ch) for ch in text)
 
 
 # 正規化ビュー (v0.7): postal-jp / phone-jp / email は正規化して照合する。
@@ -201,19 +215,27 @@ def normalize_text(text):
 # --------------------------------------------------------------- ルール解析
 
 def _parse_mode(mode):
-    """MODE ('+' 語単位接頭辞つき) を解析する。戻り値: (word_unit, base_mode)。
+    """MODE ('+' / '~' 接頭辞つき) を解析する。
 
-    '+' 接頭辞は語単位一致。'+' の後には MODE が必須 (空・未知は rc2)。
+    戻り値: (word_unit, ci, base_mode)。接頭辞は任意の順で併用可
+    (例: +label / ~label / +~label / ~+label)。接頭辞の後には
+    MODE が必須 (空・未知は rc2)。
     """
-    if mode.startswith("+"):
-        word_unit, base = True, mode[1:]
-    else:
-        word_unit, base = False, mode
-    if base not in MODES:
+    word_unit = False
+    ci = False
+    rest = mode
+    while rest[:1] in ("+", "~"):
+        if rest[0] == "+":
+            word_unit = True
+        else:
+            ci = True
+        rest = rest[1:]
+    if rest not in MODES:
         raise UsageError(
             f"不明な MODE: {mode!r} (許容: {', '.join(MODES)}"
-            " — 語単位一致は '+' 接頭辞, 例 秘密:+label)")
-    return word_unit, base
+            " — 語単位一致は '+' 接頭辞, 大小無視は '~' 接頭辞"
+            " (併用可, 例 秘密:+~label))")
+    return word_unit, ci, rest
 
 
 def _normalize_mode_arg(mode, arg):
@@ -254,9 +276,10 @@ def parse_rule(spec, index):
     arg = parts[2] if len(parts) == 3 else None
     if not pattern:
         raise UsageError("PATTERN が空です (空パターンは禁止)")
-    word_unit, mode = _parse_mode(mode)
+    word_unit, ci, mode = _parse_mode(mode)
     arg = _normalize_mode_arg(mode, arg)
-    return Rule(index, "literal", "", pattern, pattern, mode, arg, word_unit)
+    return Rule(index, "literal", "", pattern, pattern, mode, arg,
+                word_unit, ci)
 
 
 def parse_chars_arg(arg):
@@ -307,20 +330,21 @@ def parse_builtin(spec, index):
                 "chars は chars:CP-LIST:MODE[:ARG] の形式で指定してください"
                 f": {spec!r}")
         cplist, mode = parts[1], parts[2]
-        word_unit, mode = _parse_mode(mode)
+        word_unit, ci, mode = _parse_mode(mode)
         arg = ":".join(parts[3:]) if len(parts) > 3 else None
         arg = _normalize_mode_arg(mode, arg)
         canon = parse_chars_arg(cplist)
         return Rule(index, "builtin", name, canon, "chars:" + canon,
-                    mode, arg, word_unit)
+                    mode, arg, word_unit, ci)
     if len(parts) < 2:
         raise UsageError(
             "--builtin は NAME:MODE[:ARG] の形式で指定してください"
             f" (MODE なし): {spec!r}")
-    word_unit, mode = _parse_mode(parts[1])
+    word_unit, ci, mode = _parse_mode(parts[1])
     arg = ":".join(parts[2:]) if len(parts) > 2 else None
     arg = _normalize_mode_arg(mode, arg)
-    return Rule(index, "builtin", name, "", name, mode, arg, word_unit)
+    return Rule(index, "builtin", name, "", name, mode, arg,
+                word_unit, ci)
 
 
 # --------------------------------------------- 設定ファイルと --from-lens
@@ -644,15 +668,27 @@ def match_email(text):
     return matches
 
 
-def match_chars(text, canon):
-    """正規化 CP-LIST の各コードポイントの全出現 (単独・位置昇順)。"""
+def match_chars(text, canon, ci=False):
+    """正規化 CP-LIST の各コードポイントの全出現 (単独・位置昇順)。
+
+    ci=True の場合は ASCII 英字の大小両方を対象にする
+    (U+0041 は 'A' と 'a' の両方に一致)。
+    """
     matches = []
     for token in canon.split(","):
         ch = chr(int(token[2:], 16))
-        start = text.find(ch)
-        while start >= 0:
-            matches.append((start, 1))
-            start = text.find(ch, start + 1)
+        if ci:
+            # 大小両方の ASCII 変種を対象にする (U+0041 ↔ U+0061)
+            targets = {ch, _fold_char(ch)}
+            if "a" <= ch <= "z":
+                targets.add(chr(ord(ch) - 32))
+        else:
+            targets = (ch,)
+        for target in targets:
+            start = text.find(target)
+            while start >= 0:
+                matches.append((start, 1))
+                start = text.find(target, start + 1)
     matches.sort()
     return matches
 
@@ -666,6 +702,8 @@ def enumerate_matches(text, rule, norm_text=None):
     chars は常に元の text で照合する (正規化の対象外)。
     """
     if rule.kind == "literal":
+        if rule.ci:
+            return find_matches(fold_text(text), fold_text(rule.pattern))
         return find_matches(text, rule.pattern)
     if rule.name in _NORMALIZED_BUILTINS:
         if norm_text is None:
@@ -675,7 +713,7 @@ def enumerate_matches(text, rule, norm_text=None):
         if rule.name == "phone-jp":
             return match_phone_jp(norm_text)
         return match_email(norm_text)
-    return match_chars(text, rule.pattern)  # chars
+    return match_chars(text, rule.pattern, rule.ci)  # chars
 
 
 # ----------------------------------------------------- 語単位一致
@@ -787,6 +825,8 @@ def apply_redactions(text, rules):
         if (rule.kind == "builtin" and rule.name in _NORMALIZED_BUILTINS
                 and seg != norm_text[start:start + length]):
             entry["normalized"] = True  # additive (正規化ビューで照合)
+        if rule.ci:
+            entry["case_insensitive"] = True  # additive ('~' ルール)
         redactions.append(entry)
         pos = start + length
     out_parts.append(text[pos:])
@@ -819,10 +859,18 @@ def measure_pattern_appearance(out_text, rules):
     """「パターンが出力に残っていない」ことの測定 (約束ではなく測定)。
 
     literal の生パターンのみを測定対象とする (組込 matcher は
-    可変長なので「パターン文字列」が定義されない)。
+    可変長なので「パターン文字列」が定義されない)。'~' ルールは
+    ASCII 折りたたみ同士で比較する (大小無視の残留も検出する)。
     """
-    return "found" if any(rule.kind == "literal" and rule.pattern in out_text
-                          for rule in rules) else "none"
+    for rule in rules:
+        if rule.kind != "literal":
+            continue
+        if rule.ci:
+            if fold_text(rule.pattern) in fold_text(out_text):
+                return "found"
+        elif rule.pattern in out_text:
+            return "found"
+    return "none"
 
 
 def build_machine_receipt(input_byte_len, out_bytes, redactions,
@@ -863,6 +911,8 @@ def human_receipt(lang, input_byte_len, out_bytes, redactions,
         extra = ""
         if r.get("normalized"):
             extra += " normalized"
+        if r.get("case_insensitive"):
+            extra += " ci"
         lines.append(
             f"  #{n} rule={r['rule_index']} matcher={r['matcher']}"
             f" mode={r['mode']}"
@@ -907,7 +957,8 @@ def build_argparser():
                         metavar="PATTERN:MODE[:ARG]",
                         help="ルール。複数回指定可・宣言順に試行。"
                              "MODE: delete|mosaic|label|noise|decor|replace"
-                             " (語単位一致は '+' 接頭辞, 例 秘密:+label。"
+                             " (語単位一致は '+' 接頭辞, 大小無視は '~' 接頭辞"
+                             " — 併用可, 例 秘密:+~label。"
                              "PATTERN に ':' は使用不可)")
     parser.add_argument("--builtin", action=_MatcherAction, dest="matchers",
                         metavar="NAME:MODE[:ARG]",
