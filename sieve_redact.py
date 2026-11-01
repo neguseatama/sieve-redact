@@ -534,7 +534,8 @@ def match_postal_jp(text):
 # 各要素: (市外局番長, 市内局番長, 加入者番号長, 接頭辞制約)
 #   None  : 0 開始のみで追加制約なし
 #   "433" : 接頭辞が {0120, 0570, 0800} のみ
-#   "424" : 接頭辞が 0[1-6]XX かつ "433" 接頭辞集合に非所属
+#   "424" : 接頭辞が 0[1-9]XX かつ "433" 接頭辞集合に非所属
+#           (08xx / 09xx の地理 4 桁市外局番を含む — v0.7)
 _PHONE_SHAPES = (
     (3, 4, 4, None),
     (4, 3, 3, "433"),
@@ -545,6 +546,10 @@ _PHONE_SHAPES = (
 
 _PHONE_433_PREFIXES = ("0120", "0570", "0800")
 
+# 短縮番号 (3 桁・ハイフンなし)。v0.7 から phone-jp に含める。
+_PHONE_SHORT_NUMBERS = frozenset(
+    ("104", "106", "110", "117", "118", "119", "171"))
+
 
 def _phone_prefix_ok(constraint, area):
     """形状ごとの接頭辞制約。area は検証済みの数字列 (先頭 '0')。"""
@@ -552,15 +557,15 @@ def _phone_prefix_ok(constraint, area):
         return True
     if constraint == "433":
         return area in _PHONE_433_PREFIXES
-    # "424": 0[1-7]XX かつ 433 接頭辞に非所属
-    return area[1] in "1234567" and area not in _PHONE_433_PREFIXES
+    # "424": 0[1-9]XX かつ 433 接頭辞に非所属 (08xx/09xx を含む)
+    return area[1] in "123456789" and area not in _PHONE_433_PREFIXES
 
 
 def match_phone_jp(text):
-    """0 開始の電話番号。両側 ASCII digit 境界。
+    """0 開始の電話番号と短縮番号。両側 ASCII digit 境界。
 
-    試行順: (3,4,4) → (4,3,3) → (3,3,4) → (4,2,4) → (2,4,4)
-    (総長降順・同長は固定順)。
+    試行順: (3,4,4) → (4,3,3) → (3,3,4) → (4,2,4) → (2,4,4)、
+    短縮番号 (104/106/110/117/118/119/171 — ハイフンなし 3 桁)。
     """
     matches = []
     n = len(text)
@@ -592,6 +597,17 @@ def match_phone_jp(text):
                     break
             else:
                 pos += 1
+        elif text[pos] == "1":
+            # 短縮番号 (3 桁・ハイフンなし)。両側 ASCII digit 境界。
+            end = pos + 3
+            if text[pos:end] in _PHONE_SHORT_NUMBERS:
+                before_ok = pos == 0 or not _is_ascii_digit(text[pos - 1])
+                after_ok = end >= n or not _is_ascii_digit(text[end])
+                if before_ok and after_ok:
+                    matches.append((pos, 3))
+                    pos = end
+                    continue
+            pos += 1
         else:
             pos += 1
     return matches

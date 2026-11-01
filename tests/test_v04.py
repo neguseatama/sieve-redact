@@ -7,8 +7,9 @@ shapes, trial order, both-side digit boundaries, receipt fields,
 and the noise seed "phone-jp".
 
 Boundary decisions documented here:
-- 08xx and 09xx stay unmatched (explicit boundary; widening
-  further would flip behavior pinned by earlier tests).
+- v0.7 widened the (4,2,4) prefix filter to 0[1-9]xx, so 08xx and
+  09xx now match (over-matching is preferred over under-detecting;
+  the v0.4 "stay unmatched" pins below were flipped accordingly).
 - Digit sequences without real assignments may still match:
   over-matching is preferred over under-detecting.
 """
@@ -94,19 +95,19 @@ class Test424SevenExtension(PhoneRuleBase):
         self.assertEqual(r["mode"], "delete")
         self.assertEqual(r["length"], 12)
 
-    def test_08xx_stays_unmatched(self):
-        # 08xx is outside 0[1-7]xx (explicit boundary).
+    def test_08xx_now_matches(self):
+        # v0.7: 08xx joined the (4,2,4) prefix family.
         inp = self.write("in.txt", "0847-12-3456")
         out = self.dir / "out.txt"
         self.ok_run([str(inp), "-o", str(out), "--builtin", "phone-jp:delete"])
-        self.assertEqual(self.read(out), "0847-12-3456")
+        self.assertEqual(self.read(out), "")
 
-    def test_09xx_stays_unmatched(self):
-        # 09xx is outside 0[1-7]xx (explicit boundary).
+    def test_09xx_now_matches(self):
+        # v0.7: 09xx joined the (4,2,4) prefix family.
         inp = self.write("in.txt", "0912-34-5678")
         out = self.dir / "out.txt"
         self.ok_run([str(inp), "-o", str(out), "--builtin", "phone-jp:delete"])
-        self.assertEqual(self.read(out), "0912-34-5678")
+        self.assertEqual(self.read(out), "")
 
     def test_0120_excluded_from_424(self):
         # 0120 stays exclusive to (4,3,3).

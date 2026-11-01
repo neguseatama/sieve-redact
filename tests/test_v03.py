@@ -189,7 +189,8 @@ class Probe7V03(V03Base):
 
 class PhoneExtension(V03Base):
     """phone-jp 拡張形。(4,3,3) は接頭辞 {0120,0570,0800}・
-    (4,2,4) は接頭辞 0[1-6]xx (かつ (4,3,3) 接頭辞を除外)。"""
+    (4,2,4) は接頭辞 0[1-9]xx (かつ (4,3,3) 接頭辞を除外 — v0.7 で
+    08xx/09xx を含むように拡張)。"""
 
     def test_0120_433_delete(self):
         inp = self.write("in.txt", "0120-123-456")
@@ -216,12 +217,12 @@ class PhoneExtension(V03Base):
         self.ok_run([inp, "-o", out, "--builtin", "phone-jp:delete"])
         self.assertEqual(self.read(out), "")
 
-    def test_09xx_424_guard_unchanged(self):
-        # (4,2,4) は 0[1-6]xx に限定 → 0912 は不一致のまま
+    def test_09xx_424_now_matches(self):
+        # v0.7: (4,2,4) は 0[1-9]xx に拡張 → 0912 も一致
         inp = self.write("in.txt", "0912-34-5678")
         out = self.dir / "out.txt"
         self.ok_run([inp, "-o", out, "--builtin", "phone-jp:delete"])
-        self.assertEqual(self.read(out), "0912-34-5678")
+        self.assertEqual(self.read(out), "")
 
     def test_0120_424_excluded_unchanged(self):
         # 0120 は (4,3,3) 専用接頭辞 → (4,2,4) としては不一致
