@@ -10,6 +10,9 @@ v0.3: replace 様式、--from-lens twin 生成、
 v0.7: 全角・異種ハイフンの正規化ビュー照合 (builtin matcher)・
       '~' 接頭辞による大小無視一致・phone-jp の 08/09 4 桁
       市外局番と短縮番号
+v0.9: --from-lens の JSON 門番 — 重複キー・NaN/Infinity・未知キー・
+      1 MiB 超を拒否し、エラーに JSON Pointer を付与
+      (Sieve Schema Contract v1 の Redact 同梱ゲート)
 
 コア不変条件:
   - 依存は stdlib のみ / 決定的 / UTF-8 のみ / オフライン / テレメトリなし
@@ -413,87 +416,170 @@ def parse_config_lines(cfg_text, path):
     return matchers
 
 
+# --------------------------------- スキーマゲート (契約 v1 同梱部)
+
+_FROM_LENS_MAX_BYTES = 1048576  # --from-lens 入力の上限 (超過は rc2)
+
+
+def _reject_constant(name):
+    """JSON 層の門番: NaN / Infinity / -Infinity を拒否する。"""
+    raise UsageError(
+        f"--from-lens: JSON 仕様外の定数は許可されません: {name}")
+
+
+def _pairs_without_duplicates(pairs):
+    """JSON 層の門番: 同一オブジェクト内の重複キーを拒否する。"""
+    obj = {}
+    for key, val in pairs:
+        if key in obj:
+            raise UsageError(
+                f"--from-lens: JSON オブジェクトでキーが重複しています: "
+                f"{key!r}")
+        obj[key] = val
+    return obj
+
+
+def _strict_json_loads(text):
+    """重複キーと NaN/Infinity を拒否する json.loads (stdlib のみ)。"""
+    return json.loads(text, parse_constant=_reject_constant,
+                      object_pairs_hook=_pairs_without_duplicates)
+
+
+def _pointer(base, token):
+    """JSON Pointer (RFC 6901) のトークンを 1 段追加する。"""
+    return base + "/" + token.replace("~", "~0").replace("/", "~1")
+
+
+def _type_ok(val, expected):
+    """期待型の判定。bool は int の亜種として厳格に排除する。"""
+    if expected is int:
+        return isinstance(val, int) and not isinstance(val, bool)
+    return isinstance(val, expected)
+
+
+def _validate_schema(data, spec, ptr):
+    """宣言スキーマによる構造検証 (Schema Contract v1 の Redact 同梱部)。
+
+    語彙: type / required / enum / item_type / item_schema — Contract v1
+    全語彙のうち catalog v1 が使うサブセットのみを同梱する。
+    規則: 未知キーは無視せず拒否 / 型変換 (coercion) は一切しない /
+    fail-fast / エラーは JSON Pointer 付き UsageError (rc2)。
+    再帰深さはスキーマ深さで有界 (入力データの深さに依存しない)。
+    """
+    if not isinstance(data, dict):
+        raise UsageError(
+            f"--from-lens: {ptr or '(root)'}: オブジェクトである必要があります: "
+            f"{type(data).__name__}")
+    extra = sorted(set(data) - set(spec))
+    if extra:
+        raise UsageError(
+            f"--from-lens: {ptr or '(root)'}: 許可されていないキー: "
+            f"{', '.join(extra)} (許可: {', '.join(sorted(spec))})")
+    for key, rule in spec.items():
+        if key not in data:
+            if rule.get("required", True):
+                raise UsageError(
+                    f"--from-lens: {_pointer(ptr, key)}: "
+                    "必須フィールドが欠損しています")
+            continue
+        val = data[key]
+        field = _pointer(ptr, key)
+        expected = rule.get("type")
+        if expected is not None and not _type_ok(val, expected):
+            raise UsageError(
+                f"--from-lens: {field}: 型が不正です "
+                f"(期待: {expected.__name__}, 実際: {type(val).__name__})")
+        allowed_values = rule.get("enum")
+        if allowed_values is not None and val not in allowed_values:
+            raise UsageError(
+                f"--from-lens: {field}: 許可された値ではありません: {val!r} "
+                f"(許可: {', '.join(repr(v) for v in allowed_values)})")
+        item_type = rule.get("item_type")
+        if item_type is not None:
+            for idx, item in enumerate(val):
+                if not _type_ok(item, item_type):
+                    raise UsageError(
+                        f"--from-lens: {field}/{idx}: 型が不正です "
+                        f"(期待: {item_type.__name__}, "
+                        f"実際: {type(item).__name__})")
+        item_schema = rule.get("item_schema")
+        if item_schema is not None:
+            for idx, item in enumerate(val):
+                _validate_schema(item, item_schema, f"{field}/{idx}")
+
+
+# 契約 v1 (Redact Bridge catalog) の宣言スキーマ。実装からの抽出であり、
+# lens / kind は契約上のキーだが Redact は使用しない (検証のみ)。
+# count / positions は省略可。値域の追加制約 (例: count >= 0) は現行の
+# 受容範囲を変えるため導入しない。
+_FROM_LENS_SCHEMA = {
+    "lens": {"required": False, "type": str},
+    "version": {"required": True, "type": int, "enum": (1,)},
+    "observations": {"required": True, "type": list, "item_schema": {
+        "kind": {"required": False, "type": str},
+        "codepoint": {"required": True, "type": str},
+        "count": {"required": False, "type": int},
+        "positions": {"required": False, "type": list, "item_type": int},
+        "twin": {"required": False, "type": str},
+    }},
+}
+
+
 def load_lens_codepoints(path):
     """--from-lens の観測 JSON (契約 v1 + twin) を読む。
 
-    戻り値: [(正規化CP, twin正規化CP or None)] — 初出順・重複排除
-    (同一 codepoint は初出エントリの twin 属性を採用)。
-    twin (省略可) は単一コードポイント表記のみ。twin ありのエントリは
-    chars:<CP>:replace:<twin の文字>、なしは chars:<CP>:delete に
-    なる (呼び出し側で生成)。
-    kind は生成に使わない。count / positions は省略可 (整数検証)。
-    version ≠ 1・JSON 壊れ・観測書式不正は UsageError (rc2)。
-    読み込み失敗 (OSError) は呼び出し側で rc1 にする。
+    二層検証 (Schema Contract v1 の Redact 同梱ゲート):
+      1. JSON 層: UTF-8 厳格・重複キー拒否・NaN/Infinity 拒否・
+         _FROM_LENS_MAX_BYTES 上限。
+      2. スキーマ層: _FROM_LENS_SCHEMA による構造・型・enum 検証。
+         未知キーは無視せず拒否し、型変換は一切行わない。
+    意味層: codepoint / twin を parse_chars_arg で解釈し、単一コード
+    ポイントに制限する。戻り値: [(正規化CP, twin正規化CP or None)] —
+    初出順・重複排除 (同一 codepoint は初出エントリの twin 属性を採用)。
+    twin ありのエントリは chars:<CP>:replace:<twin の文字>、なしは
+    chars:<CP>:delete になる (呼び出し側で生成)。
+    全ての入力拒否は UsageError (rc2)。読み込み失敗 (OSError) は
+    呼び出し側で rc1 にする。
     """
     with open(path, "rb") as fh:
+        fh.seek(0, 2)
+        if fh.tell() > _FROM_LENS_MAX_BYTES:
+            raise UsageError(
+                f"--from-lens: ファイルが大きすぎます "
+                f"(上限: {_FROM_LENS_MAX_BYTES} バイト): {path!r}")
+        fh.seek(0)
         raw = fh.read()
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise UsageError(f"--from-lens を UTF-8 として解釈できません: {exc}")
     try:
-        doc = json.loads(text)
+        doc = _strict_json_loads(text)
     except json.JSONDecodeError as exc:
         raise UsageError(f"--from-lens の JSON を解釈できません: {exc}")
-    if not isinstance(doc, dict):
-        raise UsageError(
-            f"--from-lens: JSON はオブジェクトである必要があります: {path!r}")
-    version = doc.get("version")
-    if isinstance(version, bool) or version != 1:
-        raise UsageError(
-            f"--from-lens: 対応する version は 1 のみ: {version!r}")
-    obs = doc.get("observations")
-    if not isinstance(obs, list):
-        raise UsageError(
-            f"--from-lens: observations は配列である必要があります: {path!r}")
+    _validate_schema(doc, _FROM_LENS_SCHEMA, "")
     order = []  # [(canon, twin_canon or None)] — 初出順
     seen = {}   # canon -> twin (初出の属性を採用)
-    for i, item in enumerate(obs, 1):
-        if not isinstance(item, dict):
-            raise UsageError(
-                f"--from-lens: observation #{i} はオブジェクトである必要があります")
-        cp = item.get("codepoint")
-        if not isinstance(cp, str):
-            raise UsageError(
-                f"--from-lens: observation #{i} に codepoint (文字列) が必要です")
+    for i, item in enumerate(doc["observations"]):
+        base = f"/observations/{i}"
         try:
-            canon = parse_chars_arg(cp)
+            canon = parse_chars_arg(item["codepoint"])
         except UsageError as exc:
-            raise UsageError(f"--from-lens: observation #{i}: {exc}")
+            raise UsageError(f"--from-lens: {base}/codepoint: {exc}")
         if "," in canon:
             raise UsageError(
-                f"--from-lens: observation #{i} の codepoint は 1 個のみ: {cp!r}")
-        twin_raw = item.get("twin")
-        if twin_raw is None:
-            twin = None
-        else:
-            if not isinstance(twin_raw, str):
-                raise UsageError(
-                    f"--from-lens: observation #{i} の twin は"
-                    " 文字列である必要があります")
+                f"--from-lens: {base}/codepoint: 複数のコードポイントは"
+                f" 許可されません: {item['codepoint']!r}")
+        twin = None
+        if "twin" in item:
             try:
-                twin = parse_chars_arg(twin_raw)
+                twin = parse_chars_arg(item["twin"])
             except UsageError as exc:
-                raise UsageError(
-                    f"--from-lens: observation #{i} の twin: {exc}")
+                raise UsageError(f"--from-lens: {base}/twin: {exc}")
             if "," in twin:
                 raise UsageError(
-                    f"--from-lens: observation #{i} の twin は"
-                    f" 単一コードポイントである必要があります: {twin_raw!r}")
-        if "count" in item:
-            c = item["count"]
-            if not isinstance(c, int) or isinstance(c, bool):
-                raise UsageError(
-                    f"--from-lens: observation #{i} の count は"
-                    " 整数である必要があります")
-        if "positions" in item:
-            pos = item["positions"]
-            if (not isinstance(pos, list)
-                    or any(not isinstance(p, int) or isinstance(p, bool)
-                           for p in pos)):
-                raise UsageError(
-                    f"--from-lens: observation #{i} の positions は"
-                    " 整数の配列である必要があります")
+                    f"--from-lens: {base}/twin: 単一コードポイントのみ"
+                    f" 許可されます: {item['twin']!r}")
         if canon not in seen:
             seen[canon] = twin
             order.append((canon, twin))
