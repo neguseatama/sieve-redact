@@ -1,4 +1,4 @@
-# Sieve Redact v0.7.0
+# Sieve Redact v0.9.0
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -204,6 +204,16 @@ case-insensitive matching, the normalization view, image masking with
 JPEG input, config files, Lens integration with the schema gate, the
 Schema Contract v1 conformance corpus replica (JSON layer), CLI
 boundaries). No additional dependencies.
+
+`tests/corpus/schema_contract_v1.json` is a sha256-pinned replica of
+the Sieve Schema Contract v1 conformance corpus (44 accept/reject
+cases) maintained in the sieve-lens repository, which also hosts the
+contract text (`docs/SCHEMA_CONTRACT_v1.md`) and the canonical engine
+(`sieve_lens_ext/schema.py`). The replica exercises Redact's JSON
+layer — strict catalog loading: duplicate keys, `NaN`/`Infinity` and
+a UTF-8 BOM are refused — and the pin turns any silent drift from the
+canonical copy into a test failure (the sieve-tray vendor-sync
+precedent).
 
 ---
 

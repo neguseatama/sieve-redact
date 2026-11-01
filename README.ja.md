@@ -1,4 +1,4 @@
-# Sieve Redact v0.7.0
+# Sieve Redact v0.9.0
 
 文書に含まれる機密情報を、**決定論的に**、そして**他バイト完全性を守って**
 マスクするコマンドラインツールです。
@@ -188,9 +188,18 @@ JPEG として再圧縮しないため、マスクが新たな圧縮劣化を生
 
     python -m unittest discover -s tests -v
 
-248 テスト (5 様式・組込文字種・語単位一致・大小無視一致・正規化ビュー・
+251 テスト (5 様式・組込文字種・語単位一致・大小無視一致・正規化ビュー・
 画像マスキング (JPEG 入力を含む)・設定ファイル・スキーマゲートを含む
-Lens 連携・CLI 境界) を内蔵。追加の依存はありません。
+Lens 連携・Schema Contract v1 適合コーパス複製 (JSON 層)・CLI 境界) を内蔵。
+追加の依存はありません。
+
+`tests/corpus/schema_contract_v1.json` は、sieve-lens リポジトリが管理する
+Sieve Schema Contract v1 適合コーパス (受理/拒否 44 ケース) の sha256 pin
+付き複製です。契約書 (`docs/SCHEMA_CONTRACT_v1.md`) と正本エンジン
+(`sieve_lens_ext/schema.py`) も sieve-lens 側にあります。複製が実測するの
+は Redact の JSON 層 — 目録の厳格読み込み (重複キー・`NaN`/`Infinity`・
+UTF-8 BOM を拒否) — で、pin により正本との無言の乖離はテスト失敗として
+検出されます (sieve-tray の vendor sync 先例と同じ方式)。
 
 ---
 
