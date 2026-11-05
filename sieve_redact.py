@@ -25,14 +25,22 @@ v0.9: --from-lens の JSON 門番 — 重複キー・NaN/Infinity・未知キー
 """
 
 import argparse
+import bisect
 import hashlib
 import json
 import os
 import sys
+import tempfile
+import warnings
 from pathlib import Path
 from collections import namedtuple
 
 VERSION = "0.9.0"
+
+# 画像モードで読み込む画像の画素数上限 (v0.9.1・A-1)。
+# ヘッダから取得した寸法で重い処理 (画素のループ・整合検査) の前に拒否する。
+# 一般的なカメラの写真 (〜50 メガピクセル級) が通る値。
+MAX_IMAGE_PIXELS = 64_000_000
 
 REGION_MODES = ("delete", "mosaic", "label", "noise", "decor", "replace")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -40,10 +48,86 @@ JPEG_SIGNATURE = b"\xff\xd8\xff"
 LABEL_PREFIX_DEFAULT = "[REDACTED]"
 
 try:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageChops, ImageDraw, ImageFont
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
+
+
+def _same_target_file(input_path, output_path):
+    """入力と出力が同一実体を指すか (v0.9.1・A-3)。
+
+    出力が既に存在する場合は os.path.samefile (シンボリックリンク・
+    ハードリンク・相対/絶対の表記差を実体で解決)。未作成の場合は
+    解決した親ディレクトリ + ファイル名 (realpath) で比較する。
+    テキスト・画像の両モードで使う。
+    """
+    if os.path.exists(output_path):
+        try:
+            return os.path.samefile(input_path, output_path)
+        except OSError:
+            pass
+    return os.path.realpath(input_path) == os.path.realpath(output_path)
+
+
+def _silent_unlink(path):
+    # 失敗済み経路での後始末 — ここからの例外は無視する。
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
+def _adopt_output_permissions(path, tmp_name):
+    """一時ファイルを出力先の権限に揃える (v0.9.1・A-4)。
+
+    既存の出力を置き換える場合はその権限を継承し、新規作成の場合は
+    直接 open(path, "wb") で作った場合と同じ 0666 & ~umask にする。
+    """
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except OSError:
+        cur = os.umask(0)
+        os.umask(cur)
+        mode = 0o666 & ~cur
+    os.chmod(tmp_name, mode)
+
+
+def _atomic_write(path, data):
+    """一時ファイルに書いてから os.replace で置き換える (v0.9.1・A-4)。
+
+    同じディレクトリに一時ファイルを作るため、置き換えは常に同じ
+    ファイルシステム上で完結する。書き込みの途中で失敗しても既存の
+    出力は壊れず、一時ファイルも残らない。成功時の内容・権限・名前は
+    従来の直接書き込みと同じ。
+    """
+    path = Path(path)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    os.close(fd)
+    try:
+        with open(tmp_name, "wb") as fh:
+            fh.write(data)
+        _adopt_output_permissions(path, tmp_name)
+        os.replace(tmp_name, path)
+    except BaseException:
+        _silent_unlink(tmp_name)
+        raise
+
+
+def _atomic_save_image(img, path):
+    """画像モードの出力を原子的に書く (v0.9.1・A-4)。"""
+    path = Path(path)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    os.close(fd)
+    try:
+        img.save(tmp_name, format="PNG")
+        _adopt_output_permissions(path, tmp_name)
+        os.replace(tmp_name, path)
+    except BaseException:
+        _silent_unlink(tmp_name)
+        raise
 
 
 def parse_region_spec(spec):
@@ -896,15 +980,28 @@ def apply_redactions(text, rules):
         元テキストの区間に適用する (レシートの位置も元テキスト基準)
     """
     norm_text = normalize_text(text)
-    # ルールは宣言順に試行し、既確定区間と重なる後発マッチは捨てる
+    # ルールは宣言順に試行し、既確定区間と重なる後発マッチは捨てる。
+    # 確定区間は常に非交差なので、開始位置の整列配列 + 2 分探索で
+    # 重なりを判定する (v0.9.1・A-5 — v0.9.0 は全確定区間への線形走査で
+    # 件数の 2 乗で遅かった。結果は素朴な実装と完全一致。
+    # tests/test_v0_9_1_hardening.py の参照実装がそれを固定する)。
     confirmed = []  # (開始文字位置, 長さ, Rule)
+    starts = []     # 確定区間の開始位置 (整列・非交差)
+    ends = []       # 確定区間の終了位置 (開始位置と同順で整列)
     for rule in rules:
         for start, length in enumerate_matches(text, rule, norm_text):
             if rule.word_unit and not word_unit_ok(text, start, length):
                 continue
             end = start + length
-            if any(start < s + l and s < end for s, l, _ in confirmed):
+            # 最後の「start 未満で終わる可能性がある」区間だけ調べる:
+            # hi = 開始位置が end 未満の最後の区間。確定区間は非交差
+            # なので ends も整列しており、ends[hi] > start なら重なる。
+            hi = bisect.bisect_left(starts, end) - 1
+            if hi >= 0 and ends[hi] > start:
                 continue
+            idx = bisect.bisect_right(starts, start)
+            starts.insert(idx, start)
+            ends.insert(idx, end)
             confirmed.append((start, length, rule))
     # 確定した全区間は位置昇順でソートしてから適用
     confirmed.sort(key=lambda c: (c[0], c[1]))
@@ -1169,7 +1266,7 @@ def main_image(args):
         print("sieve-redact: error: --rule cannot be combined with "
               "--region (image mode)", file=sys.stderr)
         return 2
-    if Path(args.input) == Path(args.output):
+    if _same_target_file(args.input, args.output):
         print("sieve-redact: error: in-place output is not allowed "
               "(-o must differ from the input)", file=sys.stderr)
         return 2
@@ -1199,6 +1296,13 @@ def main_image(args):
             detail = jpeg_exc if data[:3] == JPEG_SIGNATURE else png_exc
             print("sieve-redact: error: %s" % detail, file=sys.stderr)
             return 2
+    # A-1 (v0.9.1): 画素数の上限。ヘッダから取得した寸法で、画素を
+    # 展開する重い処理の前に拒否する。メッセージには数値のみを載せる。
+    if width * height > MAX_IMAGE_PIXELS:
+        print("sieve-redact: error: image too large: %d pixels "
+              "(limit: %d pixels)" % (width * height, MAX_IMAGE_PIXELS),
+              file=sys.stderr)
+        return 2
     for r in regions:
         if r["x"] + r["w"] > width or r["y"] + r["h"] > height:
             print("sieve-redact: error: region %d,%d,%d,%d exceeds image "
@@ -1207,8 +1311,14 @@ def main_image(args):
             return 2
     import io
     try:
-        img = Image.open(io.BytesIO(data))
-        img.load()
+        # A-1 (v0.9.1): Pillow の decompression bomb 閾値を超えた画像は
+        # 警告・例外とも同じ拒否に変換する (トレースバックを出さない)。
+        # 警告は例外に昇格させてから既存の except で受ける。
+        with warnings.catch_warnings():
+            warnings.simplefilter(
+                "error", getattr(Image, "DecompressionBombWarning", UserWarning))
+            img = Image.open(io.BytesIO(data))
+            img.load()
     except Exception as exc:
         # JPEG payloads are not byte-prevalidated; decode failures must
         # surface as a clean usage error, never a traceback.
@@ -1283,16 +1393,20 @@ def main_image(args):
             tdraw.text((2, 2), r["arg"], font=font, fill=black)
             out.paste(tile, (r["x"], r["y"]))
 
+    # A-2 (v0.9.1): 整合検査を Pillow の C 実装に置き換えた。
+    # 差分画像 (ImageChops.difference) の「領域外が全て 0」を判定する
+    # のは、従来の純 Python の画素ループと同じ述語 — getbbox は
+    # RGBA で既定が alpha のみ判定のため alpha_only=False が必須。
+    # 64 メガピクセルで 37 秒 → 0.07 秒 (実測・当環境)。
     integrity_ok = True
-    for y in range(height):
-        for x in range(width):
-            inside = any(r["x"] <= x < r["x"] + r["w"]
-                         and r["y"] <= y < r["y"] + r["h"] for r in accepted)
-            if not inside and out_px[x, y] != orig_px[x, y]:
-                integrity_ok = False
-                break
-        if not integrity_ok:
-            break
+    if accepted:
+        diff = ImageChops.difference(orig, out)
+        wipe = ImageDraw.Draw(diff)
+        for r in accepted:
+            wipe.rectangle((r["x"], r["y"],
+                            r["x"] + r["w"] - 1, r["y"] + r["h"] - 1),
+                           fill=0)
+        integrity_ok = diff.getbbox(alpha_only=False) is None
     if args.strict and not integrity_ok:
         print("sieve-redact: error: pixel integrity verification failed — "
               "--strict refuses to write the output", file=sys.stderr)
@@ -1300,7 +1414,13 @@ def main_image(args):
 
     clean = Image.frombytes(img.mode, img.size, out.tobytes())
     out_path = Path(args.output)
-    clean.save(str(out_path), format="PNG")
+    # A-4 (v0.9.1): 一時ファイルに書いてから置き換える。
+    try:
+        _atomic_save_image(clean, out_path)
+    except OSError as exc:
+        print("sieve-redact: error: cannot write output: %s" % exc,
+              file=sys.stderr)
+        return 1
     out_bytes = out_path.stat().st_size
     receipt = {
         "input_bytes": len(data),
@@ -1316,9 +1436,10 @@ def main_image(args):
     }
     if args.receipt:
         try:
-            Path(args.receipt).write_text(
-                json.dumps(receipt, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8")
+            _atomic_write(
+                args.receipt,
+                (json.dumps(receipt, ensure_ascii=False, indent=2)
+                 + "\n").encode("utf-8"))
         except OSError as exc:
             print("sieve-redact: error: cannot write receipt: %s" % exc,
                   file=sys.stderr)
@@ -1414,7 +1535,7 @@ def main(argv=None):
         print(f"sieve-redact: error: {exc}", file=sys.stderr)
         raise SystemExit(2)
 
-    if os.path.realpath(args.input) == os.path.realpath(args.output):
+    if _same_target_file(args.input, args.output):
         print("sieve-redact: error: in-place は禁止です"
               " (-o には入力と別のファイルを指定)", file=sys.stderr)
         raise SystemExit(2)
@@ -1444,8 +1565,7 @@ def main(argv=None):
         raise SystemExit(3)
 
     try:
-        with open(args.output, "wb") as fh:
-            fh.write(out_bytes)
+        _atomic_write(args.output, out_bytes)
     except OSError as exc:
         print(f"sieve-redact: error: 出力ファイルを書けません: {exc}",
               file=sys.stderr)
@@ -1456,8 +1576,10 @@ def main(argv=None):
                                     integrity_ok, appearance)
     if args.receipt:
         try:
-            with open(args.receipt, "w", encoding="utf-8", newline="\n") as fh:
-                fh.write(json.dumps(machine, ensure_ascii=False, indent=2) + "\n")
+            _atomic_write(
+                args.receipt,
+                (json.dumps(machine, ensure_ascii=False, indent=2)
+                 + "\n").encode("utf-8"))
         except OSError as exc:
             print(f"sieve-redact: error: レシートを書けません: {exc}",
                   file=sys.stderr)

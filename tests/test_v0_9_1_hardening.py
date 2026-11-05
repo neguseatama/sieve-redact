@@ -424,7 +424,7 @@ class RD_T04_SameTarget(HardeningBase):
         self.assertIn("in-place", proc.stderr)
 
     def test_image_relative_vs_absolute_refused(self):
-        src = self.gradient_rgb()
+        src = self.gradient_rgb(name="in.png")
         proc = self.run_cli(
             ["in.png", "-o", str(src.resolve()),
              "--region", "0,0,2,2:delete"], cwd=str(self.dir))
