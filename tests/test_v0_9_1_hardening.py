@@ -609,11 +609,19 @@ def _naive_apply_redactions(text, rules):
 
     実装 (bisect 化) と同じ結果を返すことを保証するためだけに存在する。
     適用部は sr の構成部品を再利用する (mode の意味は不変のため)。
+    照合ビューも実装と同じものを使う (v0.10.0 から phone-jp / postal-jp は
+    normalize_text_digits の第 2 ビューで照合するため、参照実装もそれを
+    渡す — 参照実装が固定するのは重なり解決であって照合ではない)。
     """
     norm_text = sr.normalize_text(text)
+    digit_text = None
     confirmed = []
     for rule in rules:
-        for start, length in sr.enumerate_matches(text, rule, norm_text):
+        if (rule.kind == "builtin" and rule.name in ("postal-jp", "phone-jp")
+                and digit_text is None):
+            digit_text = sr.normalize_text_digits(text)
+        for start, length in sr.enumerate_matches(
+                text, rule, norm_text, digit_text):
             if rule.word_unit and not sr.word_unit_ok(text, start, length):
                 continue
             end = start + length
@@ -672,7 +680,8 @@ def _naive_apply_redactions(text, rules):
         if rule.word_unit:
             entry["word_unit"] = True
         if (rule.kind == "builtin" and rule.name in sr._NORMALIZED_BUILTINS
-                and seg != norm_text[start:start + length]):
+                and seg != _naive_match_view(
+                    rule, norm_text, digit_text)[start:start + length]):
             entry["normalized"] = True
         if rule.ci:
             entry["case_insensitive"] = True
@@ -680,6 +689,13 @@ def _naive_apply_redactions(text, rules):
         pos = start + length
     out_parts.append(text[pos:])
     return "".join(out_parts), redactions
+
+
+def _naive_match_view(rule, norm_text, digit_text):
+    if (rule.kind == "builtin" and rule.name in ("postal-jp", "phone-jp")
+            and digit_text is not None):
+        return digit_text
+    return norm_text
 
 
 class RD_T06_OverlapResolution(HardeningBase):
@@ -793,26 +809,26 @@ class RD_T07_ReceiptKeys(HardeningBase):
 
 
 # ---------------------------------------------------------------------------
-# RD-T08: 版の一致 (A: 0.9.1 / B: 0.10.0)
+# RD-T08: 版の一致 (A: 0.9.1 → B: 0.10.0 に更新 — 版 pin のみ変更新)
 # ---------------------------------------------------------------------------
 
 class RD_T08_Version(unittest.TestCase):
-    def test_version_is_0_9_1(self):
-        self.assertEqual(sr.VERSION, "0.9.1")
+    def test_version_is_current(self):
+        self.assertEqual(sr.VERSION, "0.10.0")
 
     def test_pyproject_version_is_dynamic_attr(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
         self.assertIn('dynamic = ["version"]', text)
         self.assertIn('version = { attr = "sieve_redact.VERSION" }', text)
 
-    def test_changelog_has_0_9_1(self):
+    def test_changelog_has_current_version(self):
         text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn("## [0.9.1]", text)
+        self.assertIn("## [0.10.0]", text)
 
     def test_readme_titles_track_version(self):
         for name in ("README.md", "README.ja.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
-            self.assertIn("Sieve Redact v0.9.1", text, name)
+            self.assertIn("Sieve Redact v0.10.0", text, name)
 
 
 if __name__ == "__main__":
