@@ -1,4 +1,4 @@
-# Sieve Redact v0.9.0
+# Sieve Redact v0.9.1
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -100,9 +100,9 @@ decoded pixels are preserved into the PNG).
 | `delete` | opaque white fill |
 | `mosaic` | block average over all channels (blocks align to the region origin; ARG = block size, default 8) |
 | `noise` | per-pixel deterministic replacement — SHA-256(`img:x:y:R,G,B`) drives the new RGB; alpha is kept, so semi-transparent pixels keep their visibility (content changes, visibility does not) |
-| `label` | black band with `[REDACTED]n` (bundled bitmap font) |
+| `label` | black band with `[REDACTED]n` (Pillow's default font) |
 | `decor` | 2px border in the ARG color (RRGGBB hex) |
-| `replace` | ARG text drawn on a white fill (bundled bitmap font) |
+| `replace` | ARG text drawn on a white fill (Pillow's default font) |
 
 Image receipts set `byte_integrity_verified` to `null` (not applicable —
 the output is always PNG, so file bytes change structurally even for PNG
