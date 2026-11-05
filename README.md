@@ -1,4 +1,4 @@
-# Sieve Redact v0.9.1
+# Sieve Redact v0.10.0
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -74,7 +74,7 @@ Redact removes it with a receipt that proves nothing else changed.
 | NAME | Target |
 |------|--------|
 | `postal-jp` | Japanese postal codes `NNN-NNNN` |
-| `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `050-…` / `0120-…` / 4-digit area codes `01XX-09XX`) and short numbers (`104` / `106` / `110` / `117` / `118` / `119` / `171`) |
+| `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `050-…` / `0120-…` / 4-digit area codes `01XX-09XX`) and short numbers (`104` / `106` / `110` / `117` / `118` / `119` / `171`) — long-vowel separators (`090ー1234ー5678`) count as hyphens |
 | `email` | Email addresses (ASCII) |
 | `chars` | All occurrences of given codepoints (`U+200B,U+00AD` form) |
 
@@ -82,8 +82,12 @@ Redact removes it with a receipt that proves nothing else changed.
 view: full-width ASCII forms (`１２３`, `ＡＢＣ`, `－`, `＠`) and dash
 variants (U+2010–2015, U+2212) are folded to their ASCII counterparts
 before matching, while masking still applies to the original bytes
-(receipts record `normalized: true` on such spans). `chars` and
-literal rules stay exact.
+(receipts record `normalized: true` on such spans). `phone-jp` and
+`postal-jp` additionally fold the long-vowel marks U+30FC (`ー`) and
+U+FF70 (`ｰ`) to `-` when they sit between digits — so `090ー1234ー5678`
+and `100ー0001` are observed like their hyphenated spellings — while
+katakana long vowels (`コーヒー`) and `email` matching stay exact.
+`chars` and literal rules stay exact.
 
 ### Image masking (`--region`)
 
@@ -229,8 +233,10 @@ precedent).
    (GIF/WebP etc.) and PDF masking are out of scope (observation is
    Sieve Lens's domain)
 4. **Normalization is 1:1 and targeted** — the built-in matchers fold
-   U+FF01..FF5E and the dash variants U+2010..2015 / U+2212 only; other
-   compatibility forms (e.g. U+3000 spaces) stay exact
+   U+FF01..FF5E and the dash variants U+2010..2015 / U+2212 (and, for
+   `postal-jp` / `phone-jp` only, the long-vowel marks U+30FC / U+FF70
+   between digits); other compatibility forms (e.g. U+3000 spaces) stay
+   exact
 5. **phone-jp shape limits remain** — numbers without hyphens other than
    the fixed short set (`104`/`106`/`110`/`117`/`118`/`119`/`171`) and
    unusual digit groupings are out of scope — match them explicitly

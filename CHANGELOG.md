@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0] - 2026-11-05
+
+### Added
+- **Long-vowel separators count as hyphens in phone/postal matching**:
+  `090ー1234ー5678` (U+30FC) and `090ｰ1234ｰ5678` (U+FF70) — and the
+  postal form `100ー0001` — are now observed by `phone-jp` /
+  `postal-jp` and masked in their original spans, with the receipts
+  reflecting the new matches (`normalized: true`). The fold applies
+  only where the mark sits between digits (the digit-separator
+  position), so katakana long vowels (`コーヒー`, `サーバー`) keep
+  their exact handling and `email` matching is untouched — no new
+  matches appear in non-digit contexts. With this change the fold set
+  aligns with the Sieve Lens character table's `dashes` section
+  (whose only two entries Redact lacked were U+30FC/U+FF70; Redact
+  still does not read the table).
+
+### Changed
+- **Version bumps to 0.10.0** (the masking scope grows, so a minor
+  bump rather than a patch).
+
 ## [0.9.1] - 2026-11-05
 
 ### Added
