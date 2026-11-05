@@ -323,6 +323,12 @@ _NORMALIZED_BUILTINS = ("postal-jp", "phone-jp", "email")
 _HYPHEN_CODEPOINTS = frozenset((0x2010, 0x2011, 0x2012, 0x2013,
                                 0x2014, 0x2015, 0x2212))
 
+# v0.10.0 (B): 長音記号 U+30FC (ー) / U+FF70 (ｰ)。数字の区切りとして
+# 働く位置 (標準正規化ビューで両隣が ASCII digit) でのみ '-' に畳み込む。
+# Lens の文字表 (sieve_lens_ext/chartable_v1.json の dashes 節) との
+# 差分はこの 2 点だった (設計依頼書 §3.7 の観測)。
+_LONG_VOWEL_CODEPOINTS = frozenset((0x30FC, 0xFF70))
+
 
 def normalize_char(ch):
     """1 文字の正規化 (1:1 対応)。対応表外はそのまま。"""
@@ -337,6 +343,28 @@ def normalize_char(ch):
 def normalize_text(text):
     """正規化ビュー (1 文字 → 1 文字のため長さは入力と同一)。"""
     return "".join(normalize_char(ch) for ch in text)
+
+
+def normalize_text_digits(text):
+    """postal-jp / phone-jp 用の第 2 正規化ビュー (v0.10.0)。
+
+    標準ビュー (normalize_text) を適用した後、長音記号 (U+30FC ー /
+    U+FF70 ｰ) を「数字の区切りとして働く位置」— 標準ビューで両隣が
+    ASCII digit の位置 — でのみ U+002D ('-') に畳み込む。1:1 の長さ
+    保存は崩れないため位置対応は保たれる。カタカナ語の長音のように
+    数字に挟まれない位置は畳みまない (email の照合にはこのビューを
+    使わない — 数字以外の文脈で新規一致を生まないため)。
+    """
+    base = normalize_text(text)
+    out = list(base)
+    n = len(out)
+    for i in range(n):
+        if ord(out[i]) in _LONG_VOWEL_CODEPOINTS:
+            if (0 < i < n - 1
+                    and _is_ascii_digit(out[i - 1])
+                    and _is_ascii_digit(out[i + 1])):
+                out[i] = "-"
+    return "".join(out)
 
 
 # --------------------------------------------------------------- ルール解析
@@ -919,25 +947,31 @@ def match_chars(text, canon, ci=False):
     return matches
 
 
-def enumerate_matches(text, rule, norm_text=None):
+def enumerate_matches(text, rule, norm_text=None, digit_text=None):
     """1 matcher の全一致を左端優先・非重複で列挙する。
 
-    postal-jp / phone-jp / email は正規化ビューで照合する。正規化は
-    1:1 なので戻り値の位置は元の text と同一。norm_text は呼び出し
-    側で再利用する場合に渡す (省略時は内部で計算)。literal と
-    chars は常に元の text で照合する (正規化の対象外)。
+    postal-jp / phone-jp は長音記号畳み込み済みの第 2 ビュー
+    (normalize_text_digits・v0.10.0) で照合する。email は従来どおり
+    標準ビュー (normalize_text)。正規化はいずれも 1:1 なので戻り値の
+    位置は元の text と同一。norm_text / digit_text は呼び出し側で再
+    利用する場合に渡す (省略時は内部で計算)。literal と chars は常に
+    元の text で照合する (正規化の対象外)。
     """
     if rule.kind == "literal":
         if rule.ci:
             return find_matches(fold_text(text), fold_text(rule.pattern))
         return find_matches(text, rule.pattern)
-    if rule.name in _NORMALIZED_BUILTINS:
+    if rule.name == "postal-jp":
+        if digit_text is None:
+            digit_text = normalize_text_digits(text)
+        return match_postal_jp(digit_text)
+    if rule.name == "phone-jp":
+        if digit_text is None:
+            digit_text = normalize_text_digits(text)
+        return match_phone_jp(digit_text)
+    if rule.name == "email":
         if norm_text is None:
             norm_text = normalize_text(text)
-        if rule.name == "postal-jp":
-            return match_postal_jp(norm_text)
-        if rule.name == "phone-jp":
-            return match_phone_jp(norm_text)
         return match_email(norm_text)
     return match_chars(text, rule.pattern, rule.ci)  # chars
 
@@ -976,10 +1010,12 @@ def apply_redactions(text, rules):
       - redactions の start/end/length は入力バイトオフセット
       - label の連番は適用順 (= 位置昇順) で全ルール通し
       - 語単位のマッチは列挙時に境界棄却される
-      - postal-jp / phone-jp / email は正規化ビューで照合し、マスクは
-        元テキストの区間に適用する (レシートの位置も元テキスト基準)
+      - postal-jp / phone-jp は長音記号畳み込み済みの第 2 ビューで、
+        email は標準ビューで照合し、マスクは元テキストの区間に適用する
+        (レシートの位置も元テキスト基準)
     """
     norm_text = normalize_text(text)
+    digit_text = None  # postal-jp / phone-jp のルールがあれば遅延計算
     # ルールは宣言順に試行し、既確定区間と重なる後発マッチは捨てる。
     # 確定区間は常に非交差なので、開始位置の整列配列 + 2 分探索で
     # 重なりを判定する (v0.9.1・A-5 — v0.9.0 は全確定区間への線形走査で
@@ -989,7 +1025,11 @@ def apply_redactions(text, rules):
     starts = []     # 確定区間の開始位置 (整列・非交差)
     ends = []       # 確定区間の終了位置 (開始位置と同順で整列)
     for rule in rules:
-        for start, length in enumerate_matches(text, rule, norm_text):
+        if (rule.kind == "builtin" and rule.name in ("postal-jp", "phone-jp")
+                and digit_text is None):
+            digit_text = normalize_text_digits(text)
+        for start, length in enumerate_matches(text, rule, norm_text,
+                                               digit_text):
             if rule.word_unit and not word_unit_ok(text, start, length):
                 continue
             end = start + length
@@ -1062,7 +1102,9 @@ def apply_redactions(text, rules):
         if rule.word_unit:
             entry["word_unit"] = True  # additive (語単位のみ出現)
         if (rule.kind == "builtin" and rule.name in _NORMALIZED_BUILTINS
-                and seg != norm_text[start:start + length]):
+                and seg != (digit_text if digit_text is not None
+                            and rule.name in ("postal-jp", "phone-jp")
+                            else norm_text)[start:start + length]):
             entry["normalized"] = True  # additive (正規化ビューで照合)
         if rule.ci:
             entry["case_insensitive"] = True  # additive ('~' ルール)
