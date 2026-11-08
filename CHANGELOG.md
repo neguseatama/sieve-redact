@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.11.0] - 2026-11-08
+
+### Added
+- **The `alias` MODE (the seventh mode, `--rule` only)**: the rule's
+  PATTERN is treated as a value and matched through the same 1:1
+  normalization view as the built-in matchers, so the value's other
+  written forms (full-width/half-width ASCII, dash variants) are
+  observed as the same value — the value's aliases. The match itself is
+  exact: the whole value, no regex, no wildcards, and kanji glyph
+  variants (同形異字, e.g. 髙/高) are not folded — the fold set is the
+  1:1 table and nothing more. The replacement is the label-style
+  sequence number (ARG prefix + ordinal, default `[REDACTED]N`), and
+  the numbering shares one position-ascending counter with `label`
+  (discarded overlaps consume no numbers). Receipt entries carry the
+  existing additive `normalized` flag when the matched span's spelling
+  differed from its normalized view; the '+' / '~' prefixes compose as
+  everywhere else. Using `alias` with `--builtin` is refused with a
+  dedicated message.
+- **Three check-digit built-ins** — each observes maximal ASCII digit
+  runs of an exact length ("ちょうど" — a 12-digit run never matches
+  inside a 13-digit run) through the standard 1:1 view, with the check
+  digit deciding:
+  - `mynumber` — exactly 12 digits, residue-11 check digit (the same
+    formula as sieve-crowd);
+  - `corporate-jp` — exactly 13 digits, the leading check digit per
+    the Corporate Number Ordinance art. 6 (weights 1,2,1,2,… from the
+    last body digit, check = 9 − (sum mod 9); the published example
+    7000012050002 carries check digit 7);
+  - `card` — 13..19 digits, the standard Luhn checksum.
+  Full-width spellings are observed with `normalized: true` on the
+  receipt. Card matching takes digit runs only (hyphenated spellings
+  are out of scope — see the known-limitations item 7).
+
+### Changed
+- **Version bumps to 0.11.0** (the observable matcher scope grows, so
+  a minor bump rather than a patch). The machine receipt contract is
+  unchanged and additive-only: no top-level key was added or removed,
+  and a v0.10.0 run produces a byte-identical machine receipt.
+
 ## [0.10.0] - 2026-11-05
 
 ### Added

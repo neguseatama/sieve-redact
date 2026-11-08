@@ -38,7 +38,7 @@ import warnings
 from pathlib import Path
 from collections import namedtuple
 
-VERSION = "0.10.0"
+VERSION = "0.11.0"
 
 # 画像モードで読み込む画像の画素数上限 (v0.9.1・A-1)。
 # ヘッダから取得した寸法で重い処理 (画素のループ・整合検査) の前に拒否する。

@@ -58,7 +58,7 @@ Redact removes it with a receipt that proves nothing else changed.
 
 ## 🔥 Features
 
-### Six redaction modes
+### Seven redaction modes
 
 | MODE | Operation | Content |
 |------|-----------|---------|
@@ -68,6 +68,7 @@ Redact removes it with a receipt that proves nothing else changed.
 | `noise` | same-class replacement | picked deterministically within the same character class (hiragana / katakana / kanji / upper / lower / digit) |
 | `decor` | wrap | `ARG + original + ARG` |
 | `replace` | bulk replace | ARG |
+| `alias` | numbered labels for a value's written forms | prefix (default `[REDACTED]`) + sequence number — the value matches through the same 1:1 normalization view as the built-ins, so its other spellings (full-width/half-width, dash variants) are observed as the same value; `--rule` only (numbering shares the label counter, position-ascending from 1) |
 
 ### Built-in matchers (`--builtin`)
 
@@ -77,6 +78,9 @@ Redact removes it with a receipt that proves nothing else changed.
 | `phone-jp` | Japanese phone numbers (`090-…` / `03-…` / `050-…` / `0120-…` / 4-digit area codes `01XX-09XX`) and short numbers (`104` / `106` / `110` / `117` / `118` / `119` / `171`) — long-vowel separators (`090ー1234ー5678`) count as hyphens |
 | `email` | Email addresses (ASCII) |
 | `chars` | All occurrences of given codepoints (`U+200B,U+00AD` form) |
+| `mynumber` | Japanese My Number — a maximal digit run of exactly 12 digits whose check digit validates (residue 11, the same formula as sieve-crowd) |
+| `corporate-jp` | Japanese corporate number (13-digit) — a maximal digit run of exactly 13 digits whose leading check digit validates (the Corporate Number Ordinance art. 6 formula; the published example 7000012050002 carries check digit 7) |
+| `card` | Card numbers — a maximal digit run of 13..19 digits that passes the standard Luhn checksum |
 
 `postal-jp` / `phone-jp` / `email` match through a 1:1 normalization
 view: full-width ASCII forms (`１２３`, `ＡＢＣ`, `－`, `＠`) and dash
@@ -87,7 +91,11 @@ before matching, while masking still applies to the original bytes
 U+FF70 (`ｰ`) to `-` when they sit between digits — so `090ー1234ー5678`
 and `100ー0001` are observed like their hyphenated spellings — while
 katakana long vowels (`コーヒー`) and `email` matching stay exact.
-`chars` and literal rules stay exact.
+The v0.11.0 number matchers (`mynumber` / `corporate-jp` / `card`) and
+the `alias` MODE use the same 1:1 view, so full-width spellings of the
+numbers are observed with `normalized: true`; the runs themselves are
+exact-length ("ちょうど") — a 12-digit run never matches inside a
+13-digit run. `chars` and plain literal rules stay exact.
 
 ### Image masking (`--region`)
 
@@ -245,6 +253,13 @@ precedent).
    v1 (`lens`/`version`/`observations`, per-item
    `kind`/`codepoint`/`count`/`positions`/`twin`) are refused, not
    ignored; future Lens versions must extend the contract explicitly
+7. **Number matchers take digit runs only** — hyphenated card spellings
+   (`4242-4242-4242-4242`) do not reach the `card` matcher (separators
+   break the run); match such spellings explicitly with `--rule` or
+   `--rule VALUE:alias` (whose normalization view still folds the dash
+   variants of the given value). Kanji glyph variants (同形異字,
+   e.g. 髙/高) are not folded anywhere — alias matching is 1:1-table
+   exact on kanji
 
 ---
 
