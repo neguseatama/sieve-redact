@@ -814,7 +814,7 @@ class RD_T07_ReceiptKeys(HardeningBase):
 
 class RD_T08_Version(unittest.TestCase):
     def test_version_is_current(self):
-        self.assertEqual(sr.VERSION, "0.10.0")
+        self.assertEqual(sr.VERSION, "0.11.0")
 
     def test_pyproject_version_is_dynamic_attr(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")

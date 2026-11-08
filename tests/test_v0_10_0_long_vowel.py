@@ -235,7 +235,7 @@ class RD_T11_ExistingFoldsUnchanged(LongVowelBase):
 
 class RD_T08_Version_B(unittest.TestCase):
     def test_version_is_0_10_0(self):
-        self.assertEqual(sr.VERSION, "0.10.0")
+        self.assertEqual(sr.VERSION, "0.11.0")
 
     def test_changelog_has_0_10_0(self):
         text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
