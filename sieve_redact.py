@@ -13,6 +13,9 @@ v0.7: 全角・異種ハイフンの正規化ビュー照合 (builtin matcher)�
 v0.9: --from-lens の JSON 門番 — 重複キー・NaN/Infinity・未知キー・
       1 MiB 超を拒否し、エラーに JSON Pointer を付与
       (Sieve Schema Contract v1 の Redact 同梱ゲート)
+v0.11: 値の別表記照合 alias MODE (第 7 MODE・--rule 専用) と
+      検査桁つき組込 3 種 (mynumber / corporate-jp / card —
+      「ちょうど」の桁幅の極大 digit run + 検査桁)
 
 コア不変条件:
   - 依存は stdlib のみ / 決定的 / UTF-8 のみ / オフライン / テレメトリなし
@@ -246,13 +249,21 @@ def _fill_rect(px, rect, color):
             px[x, y] = color
 
 
-MODES = ("delete", "mosaic", "label", "noise", "decor", "replace")
+MODES = ("delete", "mosaic", "label", "noise", "decor", "replace", "alias")
 DEFAULT_LABEL_PREFIX = "[REDACTED]"
 DEFAULT_DECOR = "..."
 NOISE_SAME_CLASS = "same-class"
 
-# 組込文字種
-BUILTIN_NAMES = ("postal-jp", "phone-jp", "email", "chars")
+# v0.11.0: 検査桁つき組込 3 種の「ちょうど」桁幅 (極大 digit run の長さ)。
+# mynumber = 12 (本体 11 + 検査 1) / corporate-jp = 13 (検査 1 + 基礎 12) /
+# card = 13..19 (標準的なカード番号の桁幅・sieve-crowd の形 #{13,19} と同期)。
+_MYNUMBER_LENGTHS = frozenset((12,))
+_CORPORATE_LENGTHS = frozenset((13,))
+_CARD_LENGTHS = frozenset(range(13, 20))
+
+# 組込文字種 (v0.11.0: 検査桁つき数字列 3 種を追加)
+BUILTIN_NAMES = ("postal-jp", "phone-jp", "email", "chars",
+                 "mynumber", "corporate-jp", "card")
 
 # 6 文字クラス。各レンジはコードポイント昇順。
 # tests 側の CLASS_RANGES と同一定義 (probe 6 再計算の前提)。
@@ -319,7 +330,8 @@ def fold_text(text):
 #   - 全角 ASCII ブロック U+FF01..FF5E → U+0021..007E
 #     (全角数字・全角英字・全角ハイフン U+FF0D・全角アット U+FF20 を含む)
 #   - 異種ハイフン U+2010..2015 / U+2212 → U+002D ('-')
-_NORMALIZED_BUILTINS = ("postal-jp", "phone-jp", "email")
+_NORMALIZED_BUILTINS = ("postal-jp", "phone-jp", "email",
+                        "mynumber", "corporate-jp", "card")
 _HYPHEN_CODEPOINTS = frozenset((0x2010, 0x2011, 0x2012, 0x2013,
                                 0x2014, 0x2015, 0x2212))
 
@@ -395,7 +407,8 @@ def _parse_mode(mode):
 
 def _normalize_mode_arg(mode, arg):
     """MODE ごとの ARG 既定値と検証 (--rule / --builtin 共通)。"""
-    if mode == "label":
+    if mode in ("label", "alias"):
+        # alias の ARG = 連番の接頭辞 (label と同じ既定・省略時 [REDACTED])。
         return arg if arg is not None else DEFAULT_LABEL_PREFIX
     if mode == "decor":
         return arg if arg is not None else DEFAULT_DECOR
@@ -486,6 +499,10 @@ def parse_builtin(spec, index):
                 f": {spec!r}")
         cplist, mode = parts[1], parts[2]
         word_unit, ci, mode = _parse_mode(mode)
+        if mode == "alias":
+            raise UsageError(
+                "alias は --rule (値の完全一致) 専用の MODE です"
+                " (--builtin では使用できません)")
         arg = ":".join(parts[3:]) if len(parts) > 3 else None
         arg = _normalize_mode_arg(mode, arg)
         canon = parse_chars_arg(cplist)
@@ -496,6 +513,10 @@ def parse_builtin(spec, index):
             "--builtin は NAME:MODE[:ARG] の形式で指定してください"
             f" (MODE なし): {spec!r}")
     word_unit, ci, mode = _parse_mode(parts[1])
+    if mode == "alias":
+        raise UsageError(
+            "alias は --rule (値の完全一致) 専用の MODE です"
+            " (--builtin では使用できません)")
     arg = ":".join(parts[2:]) if len(parts) > 2 else None
     arg = _normalize_mode_arg(mode, arg)
     return Rule(index, "builtin", name, "", name, mode, arg,
@@ -947,17 +968,92 @@ def match_chars(text, canon, ci=False):
     return matches
 
 
+def my_number_check_ok(digits):
+    """マイナンバー (12 桁 = 本体 11 + 検査 1・残差 11) の検査桁検証。
+
+    sieve-crowd と同一式: 本体 11 桁に重み (6, 5, 4, 3, 2, 7, 6, 5,
+    4, 3, 2) を左から掛けた総和を 11 で割った余り r に対し、期待値は
+    r <= 1 なら 0、それ以外は 11 - r。12 桁目 (末尾) が検査用数字。
+    """
+    if len(digits) != 12:
+        return False
+    body, check = digits[:11], int(digits[11])
+    weights = (6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2)
+    total = sum(int(d) * w for d, w in zip(body, weights))
+    r = total % 11
+    expected = 0 if r <= 1 else 11 - r
+    return check == expected
+
+
+def corporate_number_check_ok(digits):
+    """法人番号 (13 桁 = 検査 1 + 基礎 12) の検査用数字検証。
+
+    法人番号の指定等に関する省令第 6 条: 先頭 1 桁が検査用数字で、
+    基礎番号 12 桁の最下位の桁から順に 1, 2, 1, 2, ... を掛けた
+    総和を 9 で割った余りを 9 から引いた値と一致する。
+    国税庁公表の指定例 7000012050002 (基礎番号 000012050002) で
+    検算 = 7。
+    """
+    if len(digits) != 13:
+        return False
+    total = 0
+    for i, d in enumerate(reversed(digits[1:])):
+        total += int(d) * (1 if i % 2 == 0 else 2)
+    return int(digits[0]) == 9 - total % 9
+
+
+def luhn_ok(digits):
+    """標準 Luhn (カード番号の検査桁)。逆順で奇数番目を 2 倍し、
+    9 を超えたら 9 を引いて総和が 10 の倍数。"""
+    total = 0
+    for k, d in enumerate(reversed(digits)):
+        x = int(d) * (2 if k % 2 else 1)
+        total += x - 9 if x > 9 else x
+    return total % 10 == 0
+
+
+def match_number_runs(view, lengths, check_ok):
+    """正規化ビュー上の極大 ASCII digit run を走査する (v0.11.0)。
+
+    run は「ちょうど」— ビュー上で両隣が ASCII digit でない最大幅の
+    数字列。長さが lengths に属し check_ok(数字列) が真の run だけを
+    (開始位置, 長さ) で返す。ビューは 1:1 のため位置は元テキストと同一。
+    """
+    matches = []
+    n = len(view)
+    pos = 0
+    while pos < n:
+        if _is_ascii_digit(view[pos]):
+            end = pos + 1
+            while end < n and _is_ascii_digit(view[end]):
+                end += 1
+            if (end - pos) in lengths and check_ok(view[pos:end]):
+                matches.append((pos, end - pos))
+            pos = end
+        else:
+            pos += 1
+    return matches
+
+
 def enumerate_matches(text, rule, norm_text=None, digit_text=None):
     """1 matcher の全一致を左端優先・非重複で列挙する。
 
     postal-jp / phone-jp は長音記号畳み込み済みの第 2 ビュー
-    (normalize_text_digits・v0.10.0) で照合する。email は従来どおり
-    標準ビュー (normalize_text)。正規化はいずれも 1:1 なので戻り値の
-    位置は元の text と同一。norm_text / digit_text は呼び出し側で再
-    利用する場合に渡す (省略時は内部で計算)。literal と chars は常に
-    元の text で照合する (正規化の対象外)。
+    (normalize_text_digits・v0.10.0) で照合する。email と検査桁つき
+    組込 3 種 (v0.11.0) は標準ビュー (normalize_text)。正規化はいずれも
+    1:1 なので戻り値の位置は元の text と同一。norm_text / digit_text は
+    呼び出し側で再利用する場合に渡す (省略時は内部で計算)。
+    literal と chars は常に元の text で照合する (正規化の対象外)。
+    ただし literal の alias MODE (v0.11.0) は値の別表記を観測するため
+    標準ビューで照合する (値側も同じビューに通す = 完全一致)。
     """
     if rule.kind == "literal":
+        if rule.mode == "alias":
+            view = normalize_text(text)
+            target = normalize_text(rule.pattern)
+            if rule.ci:
+                return find_matches(fold_text(view), fold_text(target))
+            return find_matches(view, target)
         if rule.ci:
             return find_matches(fold_text(text), fold_text(rule.pattern))
         return find_matches(text, rule.pattern)
@@ -973,6 +1069,20 @@ def enumerate_matches(text, rule, norm_text=None, digit_text=None):
         if norm_text is None:
             norm_text = normalize_text(text)
         return match_email(norm_text)
+    if rule.name == "mynumber":
+        if norm_text is None:
+            norm_text = normalize_text(text)
+        return match_number_runs(norm_text, _MYNUMBER_LENGTHS,
+                                 my_number_check_ok)
+    if rule.name == "corporate-jp":
+        if norm_text is None:
+            norm_text = normalize_text(text)
+        return match_number_runs(norm_text, _CORPORATE_LENGTHS,
+                                 corporate_number_check_ok)
+    if rule.name == "card":
+        if norm_text is None:
+            norm_text = normalize_text(text)
+        return match_number_runs(norm_text, _CARD_LENGTHS, luhn_ok)
     return match_chars(text, rule.pattern, rule.ci)  # chars
 
 
@@ -1008,7 +1118,8 @@ def apply_redactions(text, rules):
 
     戻り値: (出力テキスト, redactions)
       - redactions の start/end/length は入力バイトオフセット
-      - label の連番は適用順 (= 位置昇順) で全ルール通し
+      - label / alias の連番は適用順 (= 位置昇順) で全ルール通し
+        (v0.11.0: alias も label と同じ 1 つの通しカウンタを共有)
       - 語単位のマッチは列挙時に境界棄却される
       - postal-jp / phone-jp は長音記号畳み込み済みの第 2 ビューで、
         email は標準ビューで照合し、マスクは元テキストの区間に適用する
@@ -1063,7 +1174,8 @@ def apply_redactions(text, rules):
             repl = ""
         elif rule.mode == "mosaic":
             repl = "█" * length  # 1 文字ごとに埋め (文字数保存)
-        elif rule.mode == "label":
+        elif rule.mode in ("label", "alias"):
+            # 連番 = 位置昇順の適用順・1 起 (label と alias で通し)。
             label_counter += 1
             repl = f"{rule.arg}{label_counter}"
         elif rule.mode == "decor":
@@ -1101,11 +1213,19 @@ def apply_redactions(text, rules):
         }
         if rule.word_unit:
             entry["word_unit"] = True  # additive (語単位のみ出現)
-        if (rule.kind == "builtin" and rule.name in _NORMALIZED_BUILTINS
-                and seg != (digit_text if digit_text is not None
-                            and rule.name in ("postal-jp", "phone-jp")
-                            else norm_text)[start:start + length]):
-            entry["normalized"] = True  # additive (正規化ビューで照合)
+        if rule.kind == "builtin" and rule.name in _NORMALIZED_BUILTINS:
+            # 照合に使った正規化ビューと元テキストの区間が異なるときだけ
+            # additive キーを出す (postal/phone は第 2 ビュー・他は標準)。
+            view = (digit_text if (digit_text is not None
+                                   and rule.name in ("postal-jp",
+                                                     "phone-jp"))
+                    else norm_text)
+            if seg != view[start:start + length]:
+                entry["normalized"] = True  # additive (正規化ビューで照合)
+        elif rule.mode == "alias":
+            # 値の別表記を標準ビューで照合した (additive・既存キー)。
+            if seg != norm_text[start:start + length]:
+                entry["normalized"] = True
         if rule.ci:
             entry["case_insensitive"] = True  # additive ('~' ルール)
         redactions.append(entry)
@@ -1238,13 +1358,20 @@ def build_argparser():
                         metavar="PATTERN:MODE[:ARG]",
                         help="ルール。複数回指定可・宣言順に試行。"
                              "MODE: delete|mosaic|label|noise|decor|replace"
-                             " (語単位一致は '+' 接頭辞, 大小無視は '~' 接頭辞"
+                             "|alias (alias は値の別表記を正規化ビューで"
+                             "完全一致照合する --rule 専用 MODE・"
+                             "ARG は連番の接頭辞。"
+                             "語単位一致は '+' 接頭辞, 大小無視は '~' 接頭辞"
                              " — 併用可, 例 秘密:+~label。"
                              "PATTERN に ':' は使用不可)")
     parser.add_argument("--builtin", action=_MatcherAction, dest="matchers",
                         metavar="NAME:MODE[:ARG]",
                         help="組込文字種。NAME: postal-jp|phone-jp|email|chars"
-                             " (chars は chars:CP-LIST:MODE[:ARG])。"
+                             "|mynumber|corporate-jp|card (chars は"
+                             " chars:CP-LIST:MODE[:ARG]・mynumber は 12 桁"
+                             " residual-11・corporate-jp は 13 桁 省令第 6 条"
+                             "・card は 13..19 桁 Luhn — いずれも「ちょうど」"
+                             "の桁幅の極大 digit run)。"
                              "複数回指定可・--rule と通しで宣言順に試行")
     parser.add_argument("--from-lens", action=_MatcherAction, dest="matchers",
                         metavar="FILE",
