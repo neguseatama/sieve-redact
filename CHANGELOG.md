@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.12.0] - 2026-11-24
+
+### Added
+- The `same-value` MODE gives the same value the same symbol: the
+  ordinals share one counter with `label` and `alias`, a repeat
+  consumes no number, and it works with `--rule` and `--builtin`.
+- `--from-encoding ENC` decodes the input with the given encoding
+  strictly (no auto-detection); the output stays UTF-8.
+- The `card` matcher observes separated spellings: groups of 4 digits
+  joined by one identical separator, 13..19 digits, Luhn, plus the
+  4-6-5 and 4-6-4 groupings; the replacement covers the separators.
+
+### Fixed
+- The sdist carries `tests/corpus`, `tests/render_pins.json`,
+  `README.ja.md` and `CHANGELOG.md`, and its tests pass in a fresh
+  venv.
+- The CI workflow's push branch filter matches `main` again.
+
 ## [0.11.0] - 2026-11-08
 
 ### Added
