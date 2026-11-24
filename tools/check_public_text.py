@@ -4,6 +4,13 @@ The user-facing files carry only short, factual sentences for the
 users and developers.  This checker is standard library only,
 deterministic and read-only.
 
+Like ``tools/extract_changelog.py``, the output rides as UTF-8 on
+every runner: the flagged-line summary prints Japanese words, and a
+console whose encoding is a legacy codepage (a captured pipe on
+Windows) would otherwise raise UnicodeEncodeError before a single
+line leaves the process.  ``main`` therefore pins its own stdout and
+stderr to UTF-8 before printing anything.
+
 Without arguments it scans the repository's public surface:
 
 - the two README files, ``docs/``, ``pyproject.toml`` and
@@ -217,6 +224,11 @@ def scan_repository(root=None):
 
 
 def main(argv):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except AttributeError:
+        pass  # an embedded non-console stream has no reconfigure
     if argv and argv[0] == "--text":
         if len(argv) < 2:
             print("usage: check_public_text.py --text FILE",
