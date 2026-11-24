@@ -1,4 +1,4 @@
-# Sieve Redact v0.10.0
+# Sieve Redact v0.12.0
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -58,7 +58,7 @@ Redact removes it with a receipt that proves nothing else changed.
 
 ## 🔥 Features
 
-### Seven redaction modes
+### Eight redaction modes
 
 | MODE | Operation | Content |
 |------|-----------|---------|
@@ -69,6 +69,7 @@ Redact removes it with a receipt that proves nothing else changed.
 | `decor` | wrap | `ARG + original + ARG` |
 | `replace` | bulk replace | ARG |
 | `alias` | numbered labels for a value's written forms | prefix (default `[REDACTED]`) + sequence number — the value matches through the same 1:1 normalization view as the built-ins, so its other spellings (full-width/half-width, dash variants) are observed as the same value; `--rule` only (numbering shares the label counter, position-ascending from 1) |
+| `same-value` | one symbol per value | prefix (default `[REDACTED]`) + ordinal — every occurrence of the same value carries the same symbol; the ordinals share one counter with `label` / `alias` and a repeat consumes no number; duplicates are judged by (kind, normalized value), so for `card` the same number spelled with different separators is the same value; works with `--rule` and `--builtin` |
 
 ### Built-in matchers (`--builtin`)
 
@@ -80,7 +81,7 @@ Redact removes it with a receipt that proves nothing else changed.
 | `chars` | All occurrences of given codepoints (`U+200B,U+00AD` form) |
 | `mynumber` | Japanese My Number — a maximal digit run of exactly 12 digits whose check digit validates (residue 11, the same formula as sieve-crowd) |
 | `corporate-jp` | Japanese corporate number (13-digit) — a maximal digit run of exactly 13 digits whose leading check digit validates (the Corporate Number Ordinance art. 6 formula; the published example 7000012050002 carries check digit 7) |
-| `card` | Card numbers — a maximal digit run of 13..19 digits that passes the standard Luhn checksum |
+| `card` | Card numbers — a maximal digit run of 13..19 digits that passes the standard Luhn checksum, and the separated spellings: groups of 4 digits joined by one identical separator (space, the dash variants, U+3000, U+30FC), 13..19 digits total, plus the 4-6-5 and 4-6-4 groupings; the replacement covers the separators |
 
 `postal-jp` / `phone-jp` / `email` match through a 1:1 normalization
 view: full-width ASCII forms (`１２３`, `ＡＢＣ`, `－`, `＠`) and dash
@@ -95,7 +96,10 @@ The v0.11.0 number matchers (`mynumber` / `corporate-jp` / `card`) and
 the `alias` MODE use the same 1:1 view, so full-width spellings of the
 numbers are observed with `normalized: true`; the runs themselves are
 exact-length ("ちょうど") — a 12-digit run never matches inside a
-13-digit run. `chars` and plain literal rules stay exact.
+13-digit run. For the separated card spellings the chain is judged
+form-by-form with the Luhn gate, and every group start is tried, so a
+valid number is not missed inside a longer same-separator run.
+`chars` and plain literal rules stay exact.
 
 ### Image masking (`--region`)
 
@@ -163,10 +167,15 @@ matches both case variants of the listed ASCII letters.
       --builtin phone-jp:label \
       --receipt receipt.json
 
+    # A CP932 (Windows-31J) input file; the output stays UTF-8
+    python sieve_redact.py in_sjis.txt -o out.txt \
+      --from-encoding cp932 \
+      --builtin card:label
+
 Example receipt (stdout) — `in.txt` contains `x秘密y`, run with
 `--rule "秘密:delete"`:
 
-    Sieve Redact v0.7.0 — レシート
+    Sieve Redact v0.12.0 — レシート
     入力: 8 バイト -> 出力: 2 バイト
     redact 件数: 1
       #1 rule=1 matcher=literal mode=delete pos=1..7 len=6B -> 0B sha256=062a2931da68...
@@ -200,6 +209,12 @@ The normalization view (built-in matchers) and the ASCII case folding
 (`~` rules) are per-character 1:1 mappings — they never shift positions,
 so masking still applies to the original bytes.
 
+With `--from-encoding` the byte integrity and the receipt's byte counts
+live in the UTF-8 domain: the decoded input as UTF-8 vs the output (the
+two sides must share one domain for the check to mean anything). For
+the default UTF-8 path the decoded text re-encodes to the original
+bytes, so the receipt is byte-identical to previous versions.
+
 Overlapping matches are resolved deterministically as well: rules are tried
 in declaration order, each rule scans leftmost-first, later matches that
 overlap a confirmed region are discarded, and confirmed regions are applied
@@ -211,11 +226,13 @@ in ascending order of position.
 
     python -m unittest discover -s tests -v
 
-251 tests (five modes, built-in matchers, word-unit matching,
-case-insensitive matching, the normalization view, image masking with
-JPEG input, config files, Lens integration with the schema gate, the
-Schema Contract v1 conformance corpus replica (JSON layer), CLI
-boundaries). No additional dependencies.
+381 tests (eight modes, built-in matchers including the separated card
+spellings, word-unit matching, case-insensitive matching, the
+normalization view, input encodings, image masking with JPEG input,
+config files, Lens integration with the schema gate, the Schema
+Contract v1 conformance corpus replica (JSON layer), CLI boundaries,
+the sdist contents with a fresh-venv test run, the public-text watch).
+No additional dependencies.
 
 `tests/corpus/schema_contract_v1.json` is a sha256-pinned replica of
 the Sieve Schema Contract v1 conformance corpus (44 accept/reject
@@ -253,9 +270,11 @@ precedent).
    v1 (`lens`/`version`/`observations`, per-item
    `kind`/`codepoint`/`count`/`positions`/`twin`) are refused, not
    ignored; future Lens versions must extend the contract explicitly
-7. **Number matchers take digit runs only** — hyphenated card spellings
-   (`4242-4242-4242-4242`) do not reach the `card` matcher (separators
-   break the run); match such spellings explicitly with `--rule` or
+7. **Number matchers take digit runs and uniform separators** — card
+   spellings whose groups do not share one separator (e.g.
+   `4111 1111-1111-1111`), two-character separators, glued digits
+   (`44111 1111 …`), and the 8+8 / 7+9 groupings do not reach the
+   `card` matcher; match such spellings explicitly with `--rule` or
    `--rule VALUE:alias` (whose normalization view still folds the dash
    variants of the given value). Kanji glyph variants (同形異字,
    e.g. 髙/高) are not folded anywhere — alias matching is 1:1-table
