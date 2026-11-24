@@ -230,21 +230,25 @@ class RD_T11_ExistingFoldsUnchanged(LongVowelBase):
 
 
 # ---------------------------------------------------------------------------
-# RD-T08 (B 版): 0.10.0
+# RD-T08 (B 版): 版表記 — 固定ではなく sr.VERSION との比較で守る
 # ---------------------------------------------------------------------------
 
 class RD_T08_Version_B(unittest.TestCase):
-    def test_version_is_0_10_0(self):
-        self.assertEqual(sr.VERSION, "0.11.0")
-
-    def test_changelog_has_0_10_0(self):
+    def test_version_is_current(self):
+        # CHANGELOG の最新の節 = sr.VERSION (比較形 — 版 pin ではない)。
         text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn("## [0.10.0]", text)
+        first = next(line for line in text.splitlines()
+                     if line.startswith("## ["))
+        self.assertTrue(first.startswith(f"## [{sr.VERSION}]"), first)
+
+    def test_changelog_has_current_version(self):
+        text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertIn(f"## [{sr.VERSION}]", text)
 
     def test_readme_titles_track_version(self):
         for name in ("README.md", "README.ja.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
-            self.assertIn("Sieve Redact v0.10.0", text, name)
+            self.assertIn(f"Sieve Redact v{sr.VERSION}", text, name)
 
 
 if __name__ == "__main__":
