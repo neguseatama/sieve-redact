@@ -12,6 +12,8 @@ the sdist, so these tests skip when it is absent (the sdist's test
 run) and run in the repository tree.
 """
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -151,6 +153,30 @@ class TestPublicTextWatch(unittest.TestCase):
                 self.assertEqual(mismatches, [("pkg.py", 0, 1)])
             finally:
                 cpt._BASELINE = _ROOT / "tests" / "public_text_baseline.json"
+
+    # --- RD-T23 ---------------------------------------------------------
+
+    @unittest.skipUnless(_TOOLS_PRESENT, "tools/ is not in the sdist")
+    def test_watch_writes_utf8_stdout_on_any_console_encoding(self):
+        # The flagged-line summary prints Japanese words.  A captured
+        # pipe whose encoding is a legacy codepage (the windows job's
+        # cp1252 console) makes the plain print raise
+        # UnicodeEncodeError before a single line leaves the process,
+        # which turned the watch step of the 3-OS CI red.  The watch
+        # must pin its own stdout to UTF-8 instead of trusting the
+        # console encoding.
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "cp1252"
+        proc = subprocess.run(
+            [sys.executable,
+             str(_ROOT / "tools" / "check_public_text.py")],
+            capture_output=True, env=env,
+            encoding="utf-8", errors="replace", timeout=120)
+        self.assertEqual(
+            proc.returncode, 0,
+            "rc=%d\n=== stdout ===\n%s\n=== stderr ===\n%s"
+            % (proc.returncode, proc.stdout[-3000:], proc.stderr[-3000:]))
+        self.assertIn("recorded", proc.stdout)
 
 
 if __name__ == "__main__":
