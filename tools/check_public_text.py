@@ -25,7 +25,9 @@ Without arguments it scans the repository's public surface:
   of comment or docstring lines.  The counts only ever shrink; the
   baseline holds file names and line counts only, never words.  The
   flagged lines are printed as ``recorded`` - they do not fail the
-  run; the counts shrink as those lines are cleaned up.
+  run; the counts shrink as those lines are cleaned up.  The baseline
+  keys are POSIX relative paths, so the counts compare equal on every
+  host.
 
 With ``--text FILE`` it checks one file's body (a release note or a
 commit message) with the word list and the test-identifier pattern.
@@ -177,7 +179,7 @@ def scan_repository(root=None):
             text = path.read_text(encoding="utf-8", errors="replace")
             for number, item in scan_text(text, test_numbers=True,
                                           dates=True):
-                findings.append((f"docs/{path.relative_to(docs)}",
+                findings.append((f"docs/{path.relative_to(docs).as_posix()}",
                                  number, item))
 
     changelog = root / "CHANGELOG.md"
@@ -200,7 +202,7 @@ def scan_repository(root=None):
     counted = {}
     noted = []
     for path in _iter_python_files(root):
-        rel = str(path.relative_to(root))
+        rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
         flagged = 0
         first_items = []
