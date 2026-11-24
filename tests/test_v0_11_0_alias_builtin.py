@@ -41,7 +41,8 @@ class AliasBuiltinBase(unittest.TestCase):
 
     def run_cli(self, args):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     def ok_run(self, args):
         proc = self.run_cli(args)
@@ -406,13 +407,17 @@ class RD_T07_CardBuiltin(AliasBuiltinBase):
         self.assertEqual(out, text)
         self.assertEqual(rec["total_redactions"], 0)
 
-    def test_hyphenated_card_is_not_matched(self):
-        # digit run のみが 0.11.0 の対象 (ハイフン区切りは将来の課題として
-        # CHANGELOG に記録)。
+    def test_hyphenated_card_is_matched_since_0_12_0(self):
+        # 0.11.0 では digit run のみが対象 (ハイフン区切りは将来の課題
+        # として CHANGELOG に記録)。0.12.0 からは区切りつきの表記も
+        # card の対象 — 同じ番号の別表記が観測される。
         text = "PAY: 4242-4242-4242-4242\n"
         out, rec = self.redact_text(text, ["--builtin", "card:delete"])
-        self.assertEqual(out, text)
-        self.assertEqual(rec["total_redactions"], 0)
+        self.assertEqual(out, "PAY: \n")
+        self.assertEqual(rec["total_redactions"], 1)
+        r = rec["redactions"][0]
+        self.assertEqual(r["matcher"], "builtin:card")
+        self.assertEqual(r["length"], len("4242-4242-4242-4242"))
 
 
 # ---------------------------------------------------------------------------
@@ -439,8 +444,13 @@ class RD_T08_ContractGuards(AliasBuiltinBase):
              "total_redactions", "byte_integrity_verified",
              "pattern_appearance_in_output"})
 
-    def test_version_pin(self):
-        self.assertEqual(sr.VERSION, "0.11.0")
+    def test_version_pin_tracks_the_current_version(self):
+        # 版 pin ではなく比較形 — CHANGELOG の最新の節が sr.VERSION で
+        # あること (版を上げてもこのメソッドは触らない)。
+        text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        first = next(line for line in text.splitlines()
+                     if line.startswith("## ["))
+        self.assertTrue(first.startswith(f"## [{sr.VERSION}]"), first)
 
     def test_builtin_alias_is_rejected_with_dedicated_message(self):
         # alias は値 (--rule) 専用の MODE — --builtin では専用メッセージで

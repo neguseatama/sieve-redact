@@ -30,7 +30,8 @@ class ConfigImageBase(unittest.TestCase):
         import subprocess
         import sys
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     def gate(self):
         proc = self.run_cli(["--help"])

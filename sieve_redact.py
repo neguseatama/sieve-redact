@@ -16,11 +16,21 @@ v0.9: --from-lens の JSON 門番 — 重複キー・NaN/Infinity・未知キー
 v0.11: 値の別表記照合 alias MODE (第 7 MODE・--rule 専用) と
       検査桁つき組込 3 種 (mynumber / corporate-jp / card —
       「ちょうど」の桁幅の極大 digit run + 検査桁)
+v0.12: same-value MODE (第 8 MODE・--rule と --builtin の両方 —
+      同じ値には同じ記号・label/alias と 1 つの通しカウンタ・
+      重複判定は (種類, 正規化した値))、区切りつきカード番号の
+      検出 (4 桁ずつ同じ区切り・13..19 桁・Luhn・Amex の 4-6-5 と
+      4-6-4 を含む)、--from-encoding (入力の文字コードを指定して
+      厳密にデコードする・自動判定なし・出力は常に UTF-8)
 
 コア不変条件:
-  - 依存は stdlib のみ / 決定的 / UTF-8 のみ / オフライン / テレメトリなし
+  - 依存は stdlib のみ / 決定的 / オフライン / テレメトリなし
+  - 入力は UTF-8 (既定) または --from-encoding で指定した文字コードの
+    厳密デコード。出力は常に UTF-8
   - 他バイト完全性: マッチ区間外のバイトは 1 バイトも変えない
-    (verify_byte_integrity で出力前に必ず機械検証する)
+    (verify_byte_integrity で出力前に必ず機械検証する)。
+    完全性の領域は UTF-8 — デコード済み入力を UTF-8 にした列と出力を
+    比べる (既定の UTF-8 経路では元の入力バイト列と同一になる)
   - レシートに機密本文を載せない (位置・長さ・モード・ハッシュのみ)
 
 受け入れ試験:
@@ -29,6 +39,7 @@ v0.11: 値の別表記照合 alias MODE (第 7 MODE・--rule 専用) と
 
 import argparse
 import bisect
+import codecs
 import hashlib
 import json
 import os
@@ -38,7 +49,7 @@ import warnings
 from pathlib import Path
 from collections import namedtuple
 
-VERSION = "0.11.0"
+VERSION = "0.12.0"
 
 # 画像モードで読み込む画像の画素数上限 (v0.9.1・A-1)。
 # ヘッダから取得した寸法で重い処理 (画素のループ・整合検査) の前に拒否する。
@@ -249,7 +260,8 @@ def _fill_rect(px, rect, color):
             px[x, y] = color
 
 
-MODES = ("delete", "mosaic", "label", "noise", "decor", "replace", "alias")
+MODES = ("delete", "mosaic", "label", "noise", "decor", "replace",
+         "alias", "same-value")
 DEFAULT_LABEL_PREFIX = "[REDACTED]"
 DEFAULT_DECOR = "..."
 NOISE_SAME_CLASS = "same-class"
@@ -260,6 +272,18 @@ NOISE_SAME_CLASS = "same-class"
 _MYNUMBER_LENGTHS = frozenset((12,))
 _CORPORATE_LENGTHS = frozenset((13,))
 _CARD_LENGTHS = frozenset(range(13, 20))
+
+# v0.12.0: 区切りつきカード番号の形 (組サイズのタプル・先頭から):
+#   (4,4,4,1..4) = 13..16 桁 / (4,4,4,4,1..3) = 17..19 桁
+#   Amex の 4-6-5 = 15 桁 / 4-6-4 = 14 桁
+# 区切り 1 文字は全グループ間で同一 (標準ビュー上の集合)。
+_CARD_GROUP_FORMS = frozenset(
+    [(4, 4, 4, r) for r in range(1, 5)]
+    + [(4, 4, 4, 4, r) for r in range(1, 4)]
+    + [(4, 6, 4), (4, 6, 5)])
+# 標準ビュー上の区切り文字: 半角空白・'-' (U+2010..2015 / U+2212 /
+# U+FF0D は正規化で '-' に畳まれる)・U+3000 (全角空白)・U+30FC (長音)。
+_CARD_SEPARATORS = frozenset((" ", "-", "\u3000", "\u30fc"))
 
 # 組込文字種 (v0.11.0: 検査桁つき数字列 3 種を追加)
 BUILTIN_NAMES = ("postal-jp", "phone-jp", "email", "chars",
@@ -407,8 +431,9 @@ def _parse_mode(mode):
 
 def _normalize_mode_arg(mode, arg):
     """MODE ごとの ARG 既定値と検証 (--rule / --builtin 共通)。"""
-    if mode in ("label", "alias"):
-        # alias の ARG = 連番の接頭辞 (label と同じ既定・省略時 [REDACTED])。
+    if mode in ("label", "alias", "same-value"):
+        # alias / same-value の ARG = 記号の接頭辞 (label と同じ既定・
+        # 省略時 [REDACTED])。
         return arg if arg is not None else DEFAULT_LABEL_PREFIX
     if mode == "decor":
         return arg if arg is not None else DEFAULT_DECOR
@@ -1035,12 +1060,96 @@ def match_number_runs(view, lengths, check_ok):
     return matches
 
 
+def _card_chain_at(view, words, i):
+    """words[i] を先頭に、同じ区切り 1 文字でつながる鎖を greedy に組む。
+
+    鎖は最大構造 — 同じ区切りで隣接し続ける限り延長し、そのうえで
+    組サイズが _CARD_GROUP_FORMS に属し・合計 13..19 桁・Luhn が通る
+    鎖だけを (開始位置, 長さ, 末尾 word 番号) で返す。形も Luhn も通ら
+    ない鎖はその始点からの一致を作らない (「ちょうど」の規律・None)。
+    """
+    if i + 1 >= len(words):
+        return None
+    first_start, first_len = words[i]
+    sep_pos = first_start + first_len
+    if sep_pos >= len(view) or view[sep_pos] not in _CARD_SEPARATORS:
+        return None
+    sep = view[sep_pos]
+    digits = [view[first_start:first_start + first_len]]
+    last = i
+    for k in range(i + 1, len(words)):
+        prev_start, prev_len = words[k - 1]
+        prev_end = prev_start + prev_len
+        if (prev_end < len(view) and view[prev_end] == sep
+                and words[k][0] == prev_end + 1):
+            digits.append(view[words[k][0]:words[k][0] + words[k][1]])
+            last = k
+        else:
+            break
+    if last == i:
+        return None
+    sizes = tuple(len(d) for d in digits)
+    if sizes not in _CARD_GROUP_FORMS:
+        return None
+    number = "".join(digits)
+    if not luhn_ok(number):
+        return None
+    last_end = words[last][0] + words[last][1]
+    return (first_start, last_end - first_start, last)
+
+
+def match_card(view):
+    """card の一致列 (標準ビュー上・v0.12.0)。
+
+    無区切り: 13..19 桁の極大 digit run + Luhn (0.11.0 と同一)。
+    区切りつき (v0.12.0): 極大 digit word を単位に、同じ区切り 1 文字
+    (空白・'-'・U+3000・U+30FC) でつながる鎖を組み、4 桁ずつ + 末尾
+    1..3/4 桁または Amex の 4-6-5 / 4-6-4 の組サイズ・合計 13..19 桁・
+    Luhn を満たす鎖を一致にする (一致区間は区切りを含む)。
+    鎖の始点はすべての word で試す — 20 桁の鎖自体は対象外でも、その
+    末尾の有効な 16 桁は境界が区切り文字で閉じているため観測される
+    (有効な番号の取りこぼしを起こさない fail-safe)。
+    戻り値は (開始位置, 長さ) の昇順リスト (両分岐は重ならない)。
+    """
+    words = []
+    n = len(view)
+    pos = 0
+    while pos < n:
+        if _is_ascii_digit(view[pos]):
+            end = pos + 1
+            while end < n and _is_ascii_digit(view[end]):
+                end += 1
+            words.append((pos, end - pos))
+            pos = end
+        else:
+            pos += 1
+    matches = []
+    # 無区切りの分岐 (0.11.0 から不変)
+    for start, length in words:
+        if length in _CARD_LENGTHS and luhn_ok(view[start:start + length]):
+            matches.append((start, length))
+    # 区切りつきの分岐 (v0.12.0)
+    i = 0
+    while i < len(words):
+        hit = _card_chain_at(view, words, i)
+        if hit is None:
+            i += 1
+        else:
+            start, length, last = hit
+            matches.append((start, length))
+            i = last + 1
+    matches.sort()
+    return matches
+
+
 def enumerate_matches(text, rule, norm_text=None, digit_text=None):
     """1 matcher の全一致を左端優先・非重複で列挙する。
 
     postal-jp / phone-jp は長音記号畳み込み済みの第 2 ビュー
     (normalize_text_digits・v0.10.0) で照合する。email と検査桁つき
-    組込 3 種 (v0.11.0) は標準ビュー (normalize_text)。正規化はいずれも
+    組込 3 種 (v0.11.0) は標準ビュー (normalize_text)。card は
+    v0.12.0 から無区切りの digit run に区切りつきの形を加えた
+    match_card で照合する。正規化はいずれも
     1:1 なので戻り値の位置は元の text と同一。norm_text / digit_text は
     呼び出し側で再利用する場合に渡す (省略時は内部で計算)。
     literal と chars は常に元の text で照合する (正規化の対象外)。
@@ -1082,7 +1191,7 @@ def enumerate_matches(text, rule, norm_text=None, digit_text=None):
     if rule.name == "card":
         if norm_text is None:
             norm_text = normalize_text(text)
-        return match_number_runs(norm_text, _CARD_LENGTHS, luhn_ok)
+        return match_card(norm_text)
     return match_chars(text, rule.pattern, rule.ci)  # chars
 
 
@@ -1113,13 +1222,43 @@ def word_unit_ok(text, start, length):
 
 # --------------------------------------------------------------- コア適用
 
+def _same_value_key(text, start, length, rule, norm_text, digit_text):
+    """same-value MODE の重複判定の鍵 = (種類, 正規化した値)。
+
+    種類はリテラルなら (literal, PATTERN)、組込なら (builtin, NAME)。
+    値はその matcher が照合に使ったビュー上の区間 — リテラルは生の
+    区間 ('~' 併用時は ASCII 折りたたみ後の区間)、postal-jp /
+    phone-jp は第 2 ビューの区間、email / mynumber / corporate-jp は
+    標準ビューの区間、card は区切りを除いた数字列だけ (区切りの違う
+    同一番号 = 同じ値)、chars は一致した 1 文字そのもの。
+    """
+    seg = text[start:start + length]
+    if rule.kind == "literal":
+        value = fold_text(seg) if rule.ci else seg
+        return (("literal", rule.pattern), value)
+    if rule.name == "card":
+        view = norm_text[start:start + length]
+        return (("builtin", "card"),
+                "".join(ch for ch in view if _is_ascii_digit(ch)))
+    if rule.name in ("postal-jp", "phone-jp"):
+        if digit_text is None:
+            digit_text = normalize_text_digits(text)
+        return (("builtin", rule.name), digit_text[start:start + length])
+    if rule.name == "chars":
+        return (("builtin", "chars"), seg)
+    return (("builtin", rule.name), norm_text[start:start + length])
+
+
 def apply_redactions(text, rules):
     """重複解決と全様式の適用 (全 matcher ソースを通算)。
 
     戻り値: (出力テキスト, redactions)
       - redactions の start/end/length は入力バイトオフセット
       - label / alias の連番は適用順 (= 位置昇順) で全ルール通し
-        (v0.11.0: alias も label と同じ 1 つの通しカウンタを共有)
+        (v0.11.0: alias も label と同じ 1 つの通しカウンタを共有。
+        v0.12.0: same-value も同じ 1 つの通しカウンタに加わる —
+        同じ値の 2 回目以降は同じ記号を再用し、番号を消費しない。
+        重複の判定は (種類, 正規化した値) — _same_value_key)
       - 語単位のマッチは列挙時に境界棄却される
       - postal-jp / phone-jp は長音記号畳み込み済みの第 2 ビューで、
         email は標準ビューで照合し、マスクは元テキストの区間に適用する
@@ -1164,6 +1303,7 @@ def apply_redactions(text, rules):
     out_parts = []
     redactions = []
     label_counter = 0
+    same_seen = {}  # same-value MODE: (種類, 値) -> 記号
     pos = 0
     for start, length, rule in confirmed:
         out_parts.append(text[pos:start])
@@ -1178,6 +1318,17 @@ def apply_redactions(text, rules):
             # 連番 = 位置昇順の適用順・1 起 (label と alias で通し)。
             label_counter += 1
             repl = f"{rule.arg}{label_counter}"
+        elif rule.mode == "same-value":
+            # 同じ値には同じ記号 — 初出のときだけカウンタを進め、
+            # 以降は同じ記号を再用する (番号を消費しない)。
+            key = _same_value_key(text, start, length, rule,
+                                  norm_text, digit_text)
+            symbol = same_seen.get(key)
+            if symbol is None:
+                label_counter += 1
+                symbol = f"{rule.arg}{label_counter}"
+                same_seen[key] = symbol
+            repl = symbol
         elif rule.mode == "decor":
             repl = f"{rule.arg}{seg}{rule.arg}"
         elif rule.mode == "replace":
@@ -1351,16 +1502,21 @@ def build_argparser():
         prog="sieve-redact",
         description="Sieve Redact — 決定的なテキスト redaction"
                     " (生文字列一致のみ・正規表現は扱わない)")
-    parser.add_argument("input", help="入力テキストファイル (UTF-8)")
+    parser.add_argument("input", help="入力テキストファイル"
+                                     " (既定は UTF-8・--from-encoding で"
+                                     " 文字コードを指定可)")
     parser.add_argument("-o", "--output", required=True,
-                        help="出力先 (入力と同一パスは拒否 — in-place 不可)")
+                        help="出力先 (入力と同一パスは拒否 — in-place 不可"
+                             "・出力は常に UTF-8)")
     parser.add_argument("--rule", action=_MatcherAction, dest="matchers",
                         metavar="PATTERN:MODE[:ARG]",
                         help="ルール。複数回指定可・宣言順に試行。"
                              "MODE: delete|mosaic|label|noise|decor|replace"
-                             "|alias (alias は値の別表記を正規化ビューで"
-                             "完全一致照合する --rule 専用 MODE・"
-                             "ARG は連番の接頭辞。"
+                             "|alias|same-value (alias は値の別表記を"
+                             "正規化ビューで完全一致照合する --rule 専用"
+                             " MODE・same-value は同じ値に同じ記号 —"
+                             " 連番は label / alias と 1 つの通しカウンタ・"
+                             "ARG は記号の接頭辞。"
                              "語単位一致は '+' 接頭辞, 大小無視は '~' 接頭辞"
                              " — 併用可, 例 秘密:+~label。"
                              "PATTERN に ':' は使用不可)")
@@ -1371,7 +1527,10 @@ def build_argparser():
                              " chars:CP-LIST:MODE[:ARG]・mynumber は 12 桁"
                              " residual-11・corporate-jp は 13 桁 省令第 6 条"
                              "・card は 13..19 桁 Luhn — いずれも「ちょうど」"
-                             "の桁幅の極大 digit run)。"
+                             "の桁幅の極大 digit run。card は区切りつきの"
+                             "表記 (4 桁ずつ同じ区切り・13..19 桁・"
+                             "Amex の 4-6-5 と 4-6-4 を含む) も対象 —"
+                             " 置換範囲は区切りを含む)。"
                              "複数回指定可・--rule と通しで宣言順に試行")
     parser.add_argument("--from-lens", action=_MatcherAction, dest="matchers",
                         metavar="FILE",
@@ -1381,7 +1540,16 @@ def build_argparser():
     parser.add_argument("--config", metavar="FILE",
                         help="設定ファイル。行書式: rule <spec> / builtin <spec>"
                              " / '#' コメント / 空行。spec は CLI と同一文法。"
-                             "適用順は常に --rule / --builtin / --from-lens より先")
+                             "適用順は常に --rule / --builtin / --from-lens より先"
+                             " (このファイルの文字コードは常に UTF-8)")
+    parser.add_argument("--from-encoding", metavar="ENC", default=None,
+                        help="入力ファイルの文字コード (例: cp932,"
+                             " shift_jis, euc_jp, utf-16)。指定した"
+                             " 文字コードで厳密にデコードする"
+                             " (自動判定なし・未知の名前は rc2・"
+                             " 解釈できない入力は rc1)。出力は常に"
+                             " UTF-8 — 完全性と受領書のバイト数は"
+                             " UTF-8 の領域で測る。既定は UTF-8 のみ")
     parser.add_argument("--strict", action="store_true",
                         help="他バイト完全性の検証に失敗したら出力せず終了コード 3")
     parser.add_argument("--receipt", metavar="FILE",
@@ -1628,6 +1796,10 @@ def main_image(args):
 def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # ASCII ロケール環境の安全装置
+    # stderr も固定する: windows の cp1252 母型では日本語のエラー文が
+    # backslashreplace の \uXXXX 並びに化け、読めない (3 OS CI 実測)。
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     args = build_argparser().parse_args(argv)
     # --config: 読み込み失敗は rc1・書式不正は rc2。
     # 適用順は config が常に先頭 (CLI 上のフラグ位置に依存しない)。
@@ -1662,7 +1834,27 @@ def main(argv=None):
             print("sieve-redact: error: config rule/builtin lines cannot "
                   "be combined with image mode (--region)", file=sys.stderr)
             return 2
+        if args.from_encoding:
+            print("sieve-redact: error: --from-encoding cannot be combined "
+                  "with --region (image mode is binary)", file=sys.stderr)
+            return 2
         sys.exit(main_image(args))
+
+    # --from-encoding: 入力の文字コードの解決 (未知の名前は rc2)。
+    # 解決した canonical 名でデコードする (エイリアスも正規化)。
+    if args.from_encoding:
+        try:
+            codec = codecs.lookup(args.from_encoding)
+        except LookupError:
+            print("sieve-redact: error: --from-encoding の文字コードとして"
+                  f"解釈できる名前ではありません: {args.from_encoding!r}",
+                  file=sys.stderr)
+            raise SystemExit(2)
+        enc = codec.name
+        enc_label = enc
+    else:
+        enc = "utf-8"
+        enc_label = "UTF-8"
 
     # ルール構築: config → CLI 左から右。
     # --from-lens はそのフラグ位置で初出順・重複排除の chars ルールに展開
@@ -1718,15 +1910,23 @@ def main(argv=None):
         raise SystemExit(1)
 
     try:
-        text = data.decode("utf-8")  # 厳密デコード
+        text = data.decode(enc)  # 厳密デコード (自動判定なし)
     except UnicodeDecodeError as exc:
-        print(f"sieve-redact: error: 入力を UTF-8 として解釈できません: {exc}",
+        print(f"sieve-redact: error: 入力を {enc_label} として"
+              f"解釈できません: {exc}",
               file=sys.stderr)
         raise SystemExit(1)
 
     out_text, redactions = apply_redactions(text, rules)
     out_bytes = out_text.encode("utf-8")
-    integrity_ok = verify_byte_integrity(data, out_bytes, redactions)
+    # 完全性の領域は UTF-8: デコード済み入力を UTF-8 にした列と出力を
+    # 比べる。既定の UTF-8 経路では再エンコードが元バイト列と完全一致
+    # するため data のまま (0.11.0 からバイト等価)。
+    if args.from_encoding:
+        canonical = text.encode("utf-8")
+    else:
+        canonical = data
+    integrity_ok = verify_byte_integrity(canonical, out_bytes, redactions)
 
     if args.strict and not integrity_ok:
         print("sieve-redact: error: 他バイト完全性の検証に失敗 —"
@@ -1741,7 +1941,7 @@ def main(argv=None):
         raise SystemExit(1)
 
     appearance = measure_pattern_appearance(out_text, rules)
-    machine = build_machine_receipt(len(data), out_bytes, redactions,
+    machine = build_machine_receipt(len(canonical), out_bytes, redactions,
                                     integrity_ok, appearance)
     if args.receipt:
         try:
@@ -1754,9 +1954,10 @@ def main(argv=None):
                   file=sys.stderr)
             raise SystemExit(1)
 
-    print(human_receipt(args.lang, len(data), out_bytes, redactions,
+    print(human_receipt(args.lang, len(canonical), out_bytes, redactions,
                         integrity_ok, appearance))
 
 
 if __name__ == "__main__":
-    main()
+    # main() が終了符号を返す経路 (併用拒否の 2 経路) も出口で反映する
+    raise SystemExit(main())

@@ -46,66 +46,105 @@ except ImportError:
 # ---------------------------------------------------------------------------
 V090_PINS = {
     "rgb_delete": {
-        "png": "bd89dd9311e521f2fda9a0b1220bd05e94455b0e9e55306238683661191a676e",
-        "receipt": "7fdd1efab082aa5cff2e50184e0bf9cda618a18537586644fafbe7920b2d197a",
+        "png": "160d42b53cf6ceb3b0932f3a339e9bbd70c9ac54968e0c3d0f92b27fa0cf42c9",
+        "receipt": "57367a0a4f74d76f6a7984a81743a7d6501f6feb8ccd50896f5501de72d45ce1",
     },
     "rgb_mosaic_default": {
-        "png": "ba71467212cc01d32693c66afed6ad3321b597686bc9ac10639a49cc013b3b7d",
-        "receipt": "458be719658c9eb874375bd62118d2ff4eb71f1680236bcd750b6a9dcb08931f",
+        "png": "29b7b0bf78eab1071c0eb0d45b19356f1c6ec3dc2993c044b5a13ac6a7517e64",
+        "receipt": "0d025e04a1cca742b84303e2449a12281a46848f91efb161ef14310ff16568c8",
     },
     "rgb_mosaic_arg3": {
-        "png": "2ae860cf70a596f25edfd98b1bbcab4ba22f64a64c7c0a1e5c44b9fe3f6673c5",
-        "receipt": "2fc2e5aad648d5a958f6b5d18dc7948c675efc5ccf7b6e169d8acbfda19fb570",
+        "png": "e1119b6ba564852e06241cd644ee1b6f16f46db485753ef45af2b2f9cacc9252",
+        "receipt": "8bb1864eb73c5fd2d669242eaa8da6a2736de47aa2e41aac60224dbecfceba4f",
     },
     "rgba_noise": {
-        "png": "335ddb454a530222ddababe67bf2eb45786a487d635ec89fbcf5a3e7bffcc0ce",
-        "receipt": "bf7b399664443714c8fc8efbc579ea33ce1f0b2ebce4c6d2c17f895dc16eb8b2",
+        "png": "97652da71cd2e20b6ac3cc9a1d7d50960d66d99ef590d66109e690e827fab67a",
+        "receipt": "1a9b02760ff1f277358f3d111b525c14f9070e599d00497b29f4a1bd3cb00cc1",
     },
     "rgb_decor": {
-        "png": "205d521cd7198c0573e0b85f4f18f9076f7ea18c36d2c8e60e777d9fdba76695",
-        "receipt": "737d60d64a79a7ade9f91b4fa0845090b59cb1dc4eeb50923f2d263705a01b55",
+        "png": "ebc6f75cddb42ca3000fcdbfc12cc7939fc9cc7a69489f28d3f1955342ab5357",
+        "receipt": "a023455ab53da0ab51776f6dffdb757f01fcd8a84d246adc99c6aa36ae729fbe",
     },
     "rgb_label": {
-        "png": "fca6dd0383a73bd67e77d37aeac584eee8d870a0403bc847b9d3a5b8a3e1d7fc",
-        "receipt": "ee83e719497a1549d894c87003a410f4df3021c7338cd79924846b7632c4bb23",
+        "png": "b87283f4f287b73127e985b1fbe537ee937674aad277b1e67b83e19fb685f2f6",
+        "receipt": "f9b3ce6d1a7cf43c9755f54691cc4eceaca21348e5048f44a56f05d6de909578",
     },
     "rgb_replace": {
-        "png": "982bc7c1b1b4c9fbec36ca21fc64e81282dcd0008252679a40f2f4b7a4ce8409",
-        "receipt": "5a595c9f9d4c17e5e7248a7e64cdd5f86250b2f2950f3532f36aadd7136216fe",
+        "png": "8025242b93230759dd807c6bbf608ab3a4afcd7e9cd363e605f3cab497a28572",
+        "receipt": "80b69ca72d999195142fe9f3a38e296e4938d852bebe17a6aa6618787d9f78d2",
     },
     "rgba_label": {
-        "png": "cea9c1b66b6dbcab8eed655b0ca98198cadfbf2e7c88d963f404df4dcb15db2b",
-        "receipt": "b80efda659b98ee78350c8ee5571e898e5e80620a73a5f189385a2a1c4d9e2ac",
+        "png": "0d5cbe86208188e568399c15c9513f765b7200a74df2343f9eb31aaeb484edb2",
+        "receipt": "deb362aa5a9ba40a6dcb6ff3d95140552d857762908d782f93319ce29f506697",
     },
     "overlap_delete_mosaic": {
-        "png": "b921d49051863b1ff4877814b5d85fb878f51fdc9fb7017e5be2554c747f5e1b",
-        "receipt": "383902d110295f6bfd4735716cb37c457bf841b703a8c7ff419b6368bb881c51",
+        "png": "b9c68a8f71eacbe43a712a03bb4a6a850fb669d11f767548b66f4cfbb49c7cfe",
+        "receipt": "eb625d2b750d657902ffdfddc0e310c6d1947d25d9c7b8985ebda0e3ac0dcf9d",
     },
     "multi_three_regions": {
-        "png": "59176e060ce48741f19dce4ed4c681d8a57fc82a53085df04c07cf4a5a6d0dc3",
-        "receipt": "687218557e640c76c987412222816ac67ce496d6299f9c1278d428468c407897",
+        "png": "bfb219f004485168e663a1b2406200a91486dde62cca53a4a55d9890e387908c",
+        "receipt": "746bd94e4ab510c11ec9fa6171df50909b4c9afcdfe4366e8e0650c2d149603a",
     },
     "jpeg_delete": {
-        "png": "d9868541218059ec1a69f838b8a5d7df1e5cdc101ffcfe5f5989bc56a15e6431",
-        "receipt": "e1dce4d57fe2f836d497fd246689fc4c07c2a897f21ff963f41f5ee51446b5b1",
+        "png": "f18f3f2b9490079e086774edb0d2305f1dfe4ed330298f2a2a338e38f6f7e4b4",
+        "receipt": "ef65ab1069af509b6e696773fa1db3b3e8d5f270a8bba51e195c0dcdae028c3c",
     },
     "jpeg_mosaic": {
-        "png": "c9f7488dc395b36b1c6c76aff5e243de4b4907aaf680481193dc34e3e9f28f8a",
-        "receipt": "c1af1aeb77aed8920a80ebded710c8e612500491a7f1632a487011ecfec920c0",
+        "png": "8ef7173698de4ccde0978b9b72076219146f8a53af80bad813f6b93a6450b14b",
+        "receipt": "ed64dbb20f9cd955970cbce00a99aa3e1abdcfdef7fda18ca50a0716aafbda1c",
     },
     "text_phone_mosaic": {
         "txt": "b9e3c26e0f2b3b283ddc16ae7398b55b1606f24f038d55a02d0b5c1bed90d7c5",
-        "receipt": "b3361bbba0c1359dfd6debde4e1f8dd7d5e793e29fa8ba5f6fcc5808f9efcb51",
+        "receipt": "02b885c5eb1e892503318e6e31a99e89ba2e92435efed793f6714fc1522e9fba",
     },
     "text_multirule": {
         "txt": "e0a769f4c63b27e55a9eb96eaff156fb0a66f2e669a8f3b1c7b641c94deb39c5",
-        "receipt": "29f7128cae7870916344561138c6ef3d7687501cfca8829c4dd59de9ca0daa20",
+        "receipt": "8592a59f0f625743728e5580e9f7b88aee5cb46ecc07a69907e65d2072e542c7",
     },
     "text_noise_katakana": {
         "txt": "93b48c662b01c530fc1e9f70e4cdb14ffadbd92ea081f56953445ac8728096a0",
-        "receipt": "3b67c638cfc1870e0e50cecb9462229a95a0a360d6b75cf351bd737087493fd5",
+        "receipt": "51382674f6db30b2603d0f3456c2ff1719a356fad44d09ee39ffecde8f7914ce",
     },
 }
+
+
+# The png/receipt pins above are digests, not raw container bytes:
+# _pixel_digest pins the decoded pixels (mode, size, raw pixel bytes)
+# and _receipt_digest pins the receipt JSON without the two
+# container-size fields.  The PNG container bytes themselves depend on
+# the zlib build inside the Pillow wheel of each runner (the arm64
+# macOS wheel emits a different, equally valid deflate stream than the
+# manylinux one), while the decoded pixels are encoder-free and
+# identical on every host.
+
+
+def _pixel_digest(path):
+    """sha256 over the decoded pixels: mode, size and raw pixel bytes."""
+    with Image.open(path) as img:
+        img.load()
+        digest = hashlib.sha256()
+        digest.update(img.mode.encode("ascii"))
+        digest.update(b":")
+        digest.update(("%dx%d" % img.size).encode("ascii"))
+        digest.update(b":")
+        digest.update(img.tobytes())
+    return digest.hexdigest()
+
+
+def _receipt_digest(path):
+    """sha256 of the receipt JSON without input_bytes/output_bytes.
+
+    Both fields track the byte length of the wheel-encoded fixture and
+    output containers, which legitimately differs per runner; every
+    other field must stay identical to the v0.9.0 receipts.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data.pop("input_bytes", None)
+    data.pop("output_bytes", None)
+    blob = json.dumps(data, sort_keys=True, ensure_ascii=False,
+                      separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
 
 # RD-T07: v0.9.0 で実測した領収書のキー一覧 (追加・改名・削除禁止)。
 TEXT_RECEIPT_KEYS = {
@@ -136,7 +175,8 @@ class HardeningBase(unittest.TestCase):
 
     def run_cli(self, args, cwd=None):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True, cwd=cwd)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", cwd=cwd)
 
     def gradient_rgb(self, name="grad.png", w=8, h=6):
         img = Image.new("RGB", (w, h))
@@ -249,7 +289,8 @@ class RD_T02_BombConversion(HardeningBase):
         runner = self._RUNNER.format(limit=limit, root=str(ROOT))
         return subprocess.run(
             [sys.executable, "-c", runner, str(src)] + list(args),
-            capture_output=True, text=True)
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
 
     def test_bomb_error_is_clean_refusal(self):
         # 48 px > 2*10 → DecompressionBombError
@@ -271,7 +312,7 @@ class RD_T02_BombConversion(HardeningBase):
 
 
 # ---------------------------------------------------------------------------
-# RD-T03: 金型 — 画像・テキストの出力が v0.9.0 とバイト一致 (A-2/A-5)
+# RD-T03: 金型 — 画像は v0.9.0 と画素一致、テキストはバイト一致 (A-2/A-5)
 # ---------------------------------------------------------------------------
 
 @unittest.skipUnless(PIL_OK, "Pillow not installed")
@@ -330,12 +371,12 @@ class RD_T03_GoldenMolds(HardeningBase):
                 proc = self.run_cli(cmd)
                 self.assertEqual(proc.returncode, 0, proc.stderr)
                 self.assertEqual(
-                    hashlib.sha256(out.read_bytes()).hexdigest(),
-                    V090_PINS[name]["png"], name + ": PNG bytes drifted")
+                    _pixel_digest(out),
+                    V090_PINS[name]["png"], name + ": output pixels drifted")
                 self.assertEqual(
-                    hashlib.sha256(rec.read_bytes()).hexdigest(),
+                    _receipt_digest(rec),
                     V090_PINS[name]["receipt"],
-                    name + ": receipt bytes drifted")
+                    name + ": receipt content drifted")
 
     _TEXT_CASES = {
         "text_phone_mosaic": (
@@ -355,7 +396,7 @@ class RD_T03_GoldenMolds(HardeningBase):
         for name, (text, extra) in sorted(self._TEXT_CASES.items()):
             with self.subTest(case=name):
                 src = self.dir / (name + ".txt")
-                src.write_text(text, encoding="utf-8")
+                src.write_bytes(text.encode("utf-8"))
                 out = self.dir / "out.txt"
                 rec = self.dir / "rec.json"
                 proc = self.run_cli([str(src), "-o", str(out),
@@ -365,9 +406,9 @@ class RD_T03_GoldenMolds(HardeningBase):
                     hashlib.sha256(out.read_bytes()).hexdigest(),
                     V090_PINS[name]["txt"], name + ": text bytes drifted")
                 self.assertEqual(
-                    hashlib.sha256(rec.read_bytes()).hexdigest(),
+                    _receipt_digest(rec),
                     V090_PINS[name]["receipt"],
-                    name + ": receipt bytes drifted")
+                    name + ": receipt content drifted")
 
     _TAMPER_RUNNER = (
         "import sys\n"
@@ -390,7 +431,8 @@ class RD_T03_GoldenMolds(HardeningBase):
             [sys.executable, "-c", runner, str(src), "-o",
              str(self.dir / "o.png"), "--region", "1,1,4,2:delete",
              "--strict"],
-            capture_output=True, text=True)
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
         self.assertEqual(proc.returncode, 3,
                          "改ざん (領域外の汚染) が検出されていない\n"
                          + proc.stderr)
@@ -404,7 +446,8 @@ class RD_T03_GoldenMolds(HardeningBase):
             [sys.executable, "-c", runner, str(src), "-o",
              str(self.dir / "o.png"), "--region", "0,0,2,2:delete",
              "--strict"],
-            capture_output=True, text=True)
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
@@ -557,6 +600,8 @@ class RD_T05_AtomicWrite(HardeningBase):
                          "既存の出力が壊れた")
         self._assert_no_leftovers(["grad.png", "out.png"])
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_text_success_preserves_existing_permissions(self):
         src = self.dir / "in.txt"
         src.write_text("hello secret world\n", encoding="utf-8")
@@ -568,6 +613,8 @@ class RD_T05_AtomicWrite(HardeningBase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o640)
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_text_success_fresh_output_permissions(self):
         src = self.dir / "in.txt"
         src.write_text("hello secret world\n", encoding="utf-8")
@@ -579,6 +626,8 @@ class RD_T05_AtomicWrite(HardeningBase):
         os.umask(cur)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o666 & ~cur)
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_image_success_preserves_existing_permissions(self):
         src = self.gradient_rgb()
         out = self.dir / "out.png"
@@ -589,6 +638,8 @@ class RD_T05_AtomicWrite(HardeningBase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o640)
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_image_success_fresh_output_permissions(self):
         src = self.gradient_rgb()
         out = self.dir / "out.png"
@@ -809,12 +860,18 @@ class RD_T07_ReceiptKeys(HardeningBase):
 
 
 # ---------------------------------------------------------------------------
-# RD-T08: 版の一致 (A: 0.9.1 → B: 0.10.0 に更新 — 版 pin のみ変更新)
+# RD-T08: 版の一致 — 固定ではなく sr.VERSION との比較で守る (版を上げて
+# もこのクラスは触らない。README の題字が取り残されたら
+# test_readme_titles_track_version が赤になる)。
 # ---------------------------------------------------------------------------
 
 class RD_T08_Version(unittest.TestCase):
     def test_version_is_current(self):
-        self.assertEqual(sr.VERSION, "0.11.0")
+        # CHANGELOG の最新の節 = sr.VERSION (比較形 — 版 pin ではない)。
+        text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        first = next(line for line in text.splitlines()
+                     if line.startswith("## ["))
+        self.assertTrue(first.startswith(f"## [{sr.VERSION}]"), first)
 
     def test_pyproject_version_is_dynamic_attr(self):
         text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
@@ -823,12 +880,51 @@ class RD_T08_Version(unittest.TestCase):
 
     def test_changelog_has_current_version(self):
         text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-        self.assertIn("## [0.10.0]", text)
+        self.assertIn(f"## [{sr.VERSION}]", text)
 
     def test_readme_titles_track_version(self):
         for name in ("README.md", "README.ja.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
-            self.assertIn("Sieve Redact v0.10.0", text, name)
+            self.assertIn(f"Sieve Redact v{sr.VERSION}", text, name)
+
+
+# ---------------------------------------------------------------------------
+# RD-T24: CLI のコンソール出力契約 — どの母型でも stdout/stderr が UTF-8
+# ---------------------------------------------------------------------------
+
+class RD_T24_ConsoleUtf8(HardeningBase):
+    """CLI 自身が stdout と stderr の双方を UTF-8 に固定すること。
+
+    windows の cp1252 母型では stderr が未固定のままであるため、日本語の
+    エラー文が backslashreplace の \\uXXXX 並びに化ける (3 OS CI の
+    windows 脚で実測)。子プロセスに cp1252 を強制して実測し、レシート
+    (stdout) もエラー文 (stderr) も UTF-8 のまま出ることを固定する。
+    """
+
+    def _run(self, *args):
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "cp1252"
+        return subprocess.run(
+            [sys.executable, str(SCRIPT)] + [str(a) for a in args],
+            capture_output=True, env=env,
+            encoding="utf-8", errors="replace", timeout=120)
+
+    def test_receipt_stdout_is_utf8_on_a_cp1252_console(self):
+        # stdout は 0.12.0 の冒頭で既に固定済み — 回帰の抑止。
+        src = self.dir / "in.txt"
+        src.write_bytes("hello secret world\n".encode("utf-8"))
+        out = self.dir / "out.txt"
+        proc = self._run(str(src), "-o", str(out), "--rule", "secret:delete")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("レシート", proc.stdout)
+
+    def test_error_stderr_is_utf8_without_escapes_on_a_cp1252_console(self):
+        proc = self._run(str(self.dir / "missing.txt"), "-o",
+                         str(self.dir / "out.txt"), "--rule", "secret:delete")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("入力ファイルを読めません", proc.stderr)
+        self.assertNotIn("\\u", proc.stderr,
+                         "stderr が母型の符号化に落ちました (backslashreplace)")
 
 
 if __name__ == "__main__":

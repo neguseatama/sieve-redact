@@ -1,0 +1,6 @@
+# The sdist carries everything its own test suite needs.
+include README.ja.md
+include CHANGELOG.md
+include tests/render_pins.json
+include tests/public_text_baseline.json
+recursive-include tests/corpus *.json

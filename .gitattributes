@@ -1,0 +1,4 @@
+# Byte-pinned fixtures must survive the CRLF checkouts of the windows
+# runners (core.autocrlf defaults to true there and would rewrite the
+# file, breaking the sha256 pin).
+tests/corpus/*.json -text
