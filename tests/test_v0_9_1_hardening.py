@@ -876,5 +876,44 @@ class RD_T08_Version(unittest.TestCase):
             self.assertIn(f"Sieve Redact v{sr.VERSION}", text, name)
 
 
+# ---------------------------------------------------------------------------
+# RD-T24: CLI のコンソール出力契約 — どの母型でも stdout/stderr が UTF-8
+# ---------------------------------------------------------------------------
+
+class RD_T24_ConsoleUtf8(HardeningBase):
+    """CLI 自身が stdout と stderr の双方を UTF-8 に固定すること。
+
+    windows の cp1252 母型では stderr が未固定のままであるため、日本語の
+    エラー文が backslashreplace の \\uXXXX 並びに化ける (3 OS CI の
+    windows 脚で実測)。子プロセスに cp1252 を強制して実測し、レシート
+    (stdout) もエラー文 (stderr) も UTF-8 のまま出ることを固定する。
+    """
+
+    def _run(self, *args):
+        env = dict(os.environ)
+        env["PYTHONIOENCODING"] = "cp1252"
+        return subprocess.run(
+            [sys.executable, str(SCRIPT)] + [str(a) for a in args],
+            capture_output=True, env=env,
+            encoding="utf-8", errors="replace", timeout=120)
+
+    def test_receipt_stdout_is_utf8_on_a_cp1252_console(self):
+        # stdout は 0.12.0 の冒頭で既に固定済み — 回帰の抑止。
+        src = self.dir / "in.txt"
+        src.write_bytes("hello secret world\n".encode("utf-8"))
+        out = self.dir / "out.txt"
+        proc = self._run(str(src), "-o", str(out), "--rule", "secret:delete")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("レシート", proc.stdout)
+
+    def test_error_stderr_is_utf8_without_escapes_on_a_cp1252_console(self):
+        proc = self._run(str(self.dir / "missing.txt"), "-o",
+                         str(self.dir / "out.txt"), "--rule", "secret:delete")
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("入力ファイルを読めません", proc.stderr)
+        self.assertNotIn("\\u", proc.stderr,
+                         "stderr が母型の符号化に落ちました (backslashreplace)")
+
+
 if __name__ == "__main__":
     unittest.main()
