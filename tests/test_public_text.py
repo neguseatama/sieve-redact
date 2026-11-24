@@ -108,7 +108,7 @@ class TestPublicTextWatch(unittest.TestCase):
                                        _python_scan_lines, scan_text)
         counted = {}
         for path in _iter_python_files(_ROOT):
-            rel = str(path.relative_to(_ROOT))
+            rel = path.relative_to(_ROOT).as_posix()
             text = path.read_text(encoding="utf-8", errors="replace")
             counted[rel] = sum(
                 1 for line in _python_scan_lines(text) if scan_text(line))

@@ -39,6 +39,7 @@ class PhoneRelaxBase(unittest.TestCase):
         proc = subprocess.run(
             [sys.executable, str(SCRIPT)] + list(args),
             capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
         )
         self.assertEqual(
             proc.returncode, 0,

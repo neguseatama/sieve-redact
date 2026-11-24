@@ -40,7 +40,8 @@ NOT_IMPL = "image mode (--region) is not implemented"
 
 def _region_supported():
     proc = subprocess.run([sys.executable, str(SCRIPT), "--help"],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     return "--region" in proc.stdout
 
 
@@ -64,7 +65,8 @@ class JpegBase(unittest.TestCase):
 
     def run_cli(self, args):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     def ok_run(self, args):
         proc = self.run_cli(args)

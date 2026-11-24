@@ -30,7 +30,8 @@ class LongVowelBase(unittest.TestCase):
 
     def run_cli(self, args):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     def ok_run(self, args):
         proc = self.run_cli(args)
@@ -41,7 +42,7 @@ class LongVowelBase(unittest.TestCase):
 
     def redact_text(self, text, extra):
         src = self.dir / "in.txt"
-        src.write_text(text, encoding="utf-8")
+        src.write_bytes(text.encode("utf-8"))
         out = self.dir / "out.txt"
         rec = self.dir / "rec.json"
         self.ok_run([str(src), "-o", str(out), "--receipt", str(rec)]

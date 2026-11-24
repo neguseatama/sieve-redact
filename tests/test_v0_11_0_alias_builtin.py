@@ -41,7 +41,8 @@ class AliasBuiltinBase(unittest.TestCase):
 
     def run_cli(self, args):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     def ok_run(self, args):
         proc = self.run_cli(args)

@@ -70,7 +70,7 @@ class SameValueBase(unittest.TestCase):
 
     def redact_text(self, text, extra):
         src = self.dir / "in.txt"
-        src.write_text(text, encoding="utf-8")
+        src.write_bytes(text.encode("utf-8"))
         out = self.dir / "out.txt"
         rec = self.dir / "rec.json"
         self.ok_run([str(src), "-o", str(out), "--receipt", str(rec)]

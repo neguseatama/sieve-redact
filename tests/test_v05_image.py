@@ -69,7 +69,8 @@ def write_interlaced_rgb_png(path, w=8, h=6, rgb=(200, 30, 40)):
 
 def _region_supported():
     proc = subprocess.run([sys.executable, str(SCRIPT), "--help"],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
     return "--region" in proc.stdout
 
 
@@ -84,7 +85,8 @@ class ImageBase(unittest.TestCase):
 
     def run_cli(self, args):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
 
     def ok_run(self, args):
         proc = self.run_cli(args)
@@ -164,7 +166,8 @@ class RegionUsage(ImageBase):
         proc = subprocess.run(
             [sys.executable, str(SCRIPT), str(src), "-o",
              str(self.dir / "o.png"), "--region", "0,0,2,2:delete"],
-            capture_output=True, text=True, env=env)
+            capture_output=True, text=True, env=env,
+            encoding="utf-8", errors="replace")
         self.assertEqual(proc.returncode, 2, proc.stderr)
         self.assertIn("Pillow", proc.stdout + proc.stderr)
 

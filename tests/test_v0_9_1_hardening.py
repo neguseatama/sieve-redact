@@ -175,7 +175,8 @@ class HardeningBase(unittest.TestCase):
 
     def run_cli(self, args, cwd=None):
         return subprocess.run([sys.executable, str(SCRIPT)] + list(args),
-                              capture_output=True, text=True, cwd=cwd)
+                              capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", cwd=cwd)
 
     def gradient_rgb(self, name="grad.png", w=8, h=6):
         img = Image.new("RGB", (w, h))
@@ -288,7 +289,8 @@ class RD_T02_BombConversion(HardeningBase):
         runner = self._RUNNER.format(limit=limit, root=str(ROOT))
         return subprocess.run(
             [sys.executable, "-c", runner, str(src)] + list(args),
-            capture_output=True, text=True)
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
 
     def test_bomb_error_is_clean_refusal(self):
         # 48 px > 2*10 → DecompressionBombError
@@ -394,7 +396,7 @@ class RD_T03_GoldenMolds(HardeningBase):
         for name, (text, extra) in sorted(self._TEXT_CASES.items()):
             with self.subTest(case=name):
                 src = self.dir / (name + ".txt")
-                src.write_text(text, encoding="utf-8")
+                src.write_bytes(text.encode("utf-8"))
                 out = self.dir / "out.txt"
                 rec = self.dir / "rec.json"
                 proc = self.run_cli([str(src), "-o", str(out),
@@ -429,7 +431,8 @@ class RD_T03_GoldenMolds(HardeningBase):
             [sys.executable, "-c", runner, str(src), "-o",
              str(self.dir / "o.png"), "--region", "1,1,4,2:delete",
              "--strict"],
-            capture_output=True, text=True)
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
         self.assertEqual(proc.returncode, 3,
                          "改ざん (領域外の汚染) が検出されていない\n"
                          + proc.stderr)
@@ -443,7 +446,8 @@ class RD_T03_GoldenMolds(HardeningBase):
             [sys.executable, "-c", runner, str(src), "-o",
              str(self.dir / "o.png"), "--region", "0,0,2,2:delete",
              "--strict"],
-            capture_output=True, text=True)
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
@@ -596,6 +600,8 @@ class RD_T05_AtomicWrite(HardeningBase):
                          "既存の出力が壊れた")
         self._assert_no_leftovers(["grad.png", "out.png"])
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_text_success_preserves_existing_permissions(self):
         src = self.dir / "in.txt"
         src.write_text("hello secret world\n", encoding="utf-8")
@@ -607,6 +613,8 @@ class RD_T05_AtomicWrite(HardeningBase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o640)
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_text_success_fresh_output_permissions(self):
         src = self.dir / "in.txt"
         src.write_text("hello secret world\n", encoding="utf-8")
@@ -618,6 +626,8 @@ class RD_T05_AtomicWrite(HardeningBase):
         os.umask(cur)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o666 & ~cur)
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_image_success_preserves_existing_permissions(self):
         src = self.gradient_rgb()
         out = self.dir / "out.png"
@@ -628,6 +638,8 @@ class RD_T05_AtomicWrite(HardeningBase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(stat.S_IMODE(out.stat().st_mode), 0o640)
 
+    @unittest.skipIf(os.name == "nt",
+                     "POSIX file modes are not observable on windows")
     def test_image_success_fresh_output_permissions(self):
         src = self.gradient_rgb()
         out = self.dir / "out.png"
