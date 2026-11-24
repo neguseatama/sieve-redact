@@ -1796,6 +1796,10 @@ def main_image(args):
 def main(argv=None):
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")  # ASCII ロケール環境の安全装置
+    # stderr も固定する: windows の cp1252 母型では日本語のエラー文が
+    # backslashreplace の \uXXXX 並びに化け、読めない (3 OS CI 実測)。
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
     args = build_argparser().parse_args(argv)
     # --config: 読み込み失敗は rc1・書式不正は rc2。
     # 適用順は config が常に先頭 (CLI 上のフラグ位置に依存しない)。

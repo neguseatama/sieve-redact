@@ -17,6 +17,9 @@
   `README.ja.md` and `CHANGELOG.md`, and its tests pass in a fresh
   venv.
 - The CI workflow's push branch filter matches `main` again.
+- The CLI pins `stderr` to UTF-8 as well, so Japanese error messages
+  survive a cp1252 console (windows) instead of turning into
+  `\uXXXX` escape runs.
 
 ## [0.11.0] - 2026-11-08
 
