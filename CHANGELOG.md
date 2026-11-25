@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.12.1] - 2026-11-25
+
+### Added
+- The release workflow accepts manual runs: a trial performs the
+  build, the artifact version check, the body extraction and its text
+  check and the checksum file, leaves the outputs as workflow
+  artifacts, and creates no GitHub Release; the tag-triggered path is
+  unchanged.
+
+### Changed
+- The timing test that guards the sub-quadratic overlap resolution
+  compares the minimum of several interleaved runs on larger inputs;
+  the checked bound is unchanged, and the comparison no longer flips
+  with the momentary speed of the machine.
+- The suite also verifies that the same measurement rejects a
+  genuinely quadratic overlap resolution (the naive reference kept in
+  the test file).
+
 ## [0.12.0] - 2026-11-24
 
 ### Added

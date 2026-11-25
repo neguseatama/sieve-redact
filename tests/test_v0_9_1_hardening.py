@@ -15,6 +15,7 @@
 
 import argparse
 import builtins
+import contextlib
 import hashlib
 import io
 import json
@@ -749,6 +750,43 @@ def _naive_match_view(rule, norm_text, digit_text):
     return norm_text
 
 
+@contextlib.contextmanager
+def _shaky_clock(target_run):
+    """Replace time.perf_counter with a clock that slows one run down.
+
+    A measured run appears as one call pair (the start and the end of
+    the region under measurement).  The interval that closes run
+    ``target_run`` is stretched by 2.5x, which is machine-independent:
+    a single-shot comparison of the doubled input then reports about
+    5x, far above the 3.0 boundary, while the minimum of repeated runs
+    absorbs the stall.  The virtual clock stays monotonic because every
+    step advances it by a non-negative amount.
+    """
+    real = time.perf_counter
+    state = {"virtual": real(), "last": real(), "calls": 0,
+             "run_start": None}
+
+    def shaky():
+        now = real()
+        step = max(0.0, now - state["last"])
+        state["last"] = now
+        state["calls"] += 1
+        if state["calls"] % 2:
+            state["run_start"] = now
+        elif (state["calls"] // 2 == target_run
+                and state["run_start"] is not None):
+            step = (now - state["run_start"]) * 2.5
+        state["virtual"] += step
+        return state["virtual"]
+
+    saved = time.perf_counter
+    time.perf_counter = shaky
+    try:
+        yield
+    finally:
+        time.perf_counter = saved
+
+
 class RD_T06_OverlapResolution(HardeningBase):
     _ALPHABET = ("0123456789-ーｰ_ABCabcXYZ@. \n"
                  "あいうえおカキクケコサシスセソ０１２３４５−–—―")
@@ -811,12 +849,95 @@ class RD_T06_OverlapResolution(HardeningBase):
             dt = time.perf_counter() - t0
             self.assertEqual(len(red), count)
             return dt
-        t10 = timed(10000)
-        t20 = timed(20000)
-        # 件数 2 倍で時間 3 倍未満 (緩い境界・依頼書 RD-T06)。
-        self.assertLess(t20, 3.0 * t10,
-                        "quadratic: t10=%.2fs t20=%.2fs (x%.2f)"
-                        % (t10, t20, t20 / t10))
+
+        # 件数 2 倍で時間 3 倍未満 (緩い境界 — RD-T06)。基準の意味は
+        # 変えず、測り方だけを安定させる。単発 1 回の計測は実行環境の
+        # 一時的な揺れに負けることがある (真の比率は約 2.0 のところ、
+        # 単発の計測が 3.03 を記録した実績がある)。そこで 2 つのサイ
+        # ズを交互に 3 回ずつ走らせ、それぞれの最小値で比べる。最小値
+        # は一時的な遅延を吸収し、交互の順は経時的な速度変化を両サイ
+        # ズに均す。サイズ自体も大きくし、1 回の走行が揺れに対して十
+        # 分に長くなるようにした。
+        small = large = None
+        for _ in range(3):
+            s = timed(20000)
+            l = timed(40000)
+            small = s if small is None else min(small, s)
+            large = l if large is None else min(large, l)
+        self.assertLess(large, 3.0 * small,
+                        "quadratic: t_small=%.2fs t_large=%.2fs (x%.2f)"
+                        % (small, large, large / small))
+
+    def test_complexity_comparison_survives_a_transient_slowdown(self):
+        """The doubled-input comparison must not lose to one stall.
+
+        A single-shot comparison of two runs loses to a momentary
+        slowdown of the machine: one inflated run pushes the ratio over
+        the boundary even though the true work ratio is about 2.0 (the
+        macOS leg of the 3-OS CI recorded 3.03 that way).  The clock is
+        faked deterministically here: one large-input run is made 2.5x
+        slower.  A single-shot comparison under the same clock fails,
+        and the real comparison method (the minimum of repeated
+        interleaved runs on larger inputs) must stay green.
+        """
+        # a single-shot replica of the pre-0.12.1 comparison form:
+        # the same deterministic stall must keep pushing it over the
+        # boundary (that is the failure the stabilization removes)
+        rule = sr.parse_builtin("phone-jp:delete", 1)
+
+        def timed(count):
+            text = "090-1234-5678\n" * count
+            t0 = time.perf_counter()
+            out, red = sr.apply_redactions(text, [rule])
+            dt = time.perf_counter() - t0
+            self.assertEqual(len(red), count)
+            return dt
+
+        def single_shot():
+            t10 = timed(10000)
+            t20 = timed(20000)
+            self.assertLess(t20, 3.0 * t10,
+                            "quadratic: t10=%.2fs t20=%.2fs (x%.2f)"
+                            % (t10, t20, t20 / t10))
+
+        probe = RD_T06_OverlapResolution("test_complexity_subquadratic")
+        with self.assertRaises(AssertionError):
+            with _shaky_clock(target_run=2):
+                single_shot()
+        # the stabilized form absorbs the same stall
+        with _shaky_clock(target_run=2):
+            probe.test_complexity_subquadratic()
+
+    def test_complexity_probe_rejects_a_quadratic_implementation(self):
+        """The same measurement flags the genuinely quadratic form.
+
+        The naive reference resolves overlaps with a full scan over the
+        confirmed regions, so its cost grows with the square of the
+        match count.  Under the same doubled-input comparison the
+        reference must fail the 3.0 boundary — otherwise a regression
+        of the product back to a quadratic resolution could slip
+        through the stabilized measurement.
+        """
+        rule = sr.parse_builtin("phone-jp:delete", 1)
+
+        def timed(count):
+            text = "090-1234-5678\n" * count
+            t0 = time.perf_counter()
+            out, red = _naive_apply_redactions(text, [rule])
+            dt = time.perf_counter() - t0
+            self.assertEqual(len(red), count)
+            return dt
+
+        small = large = None
+        for _ in range(2):
+            s = timed(2000)
+            l = timed(4000)
+            small = s if small is None else min(small, s)
+            large = l if large is None else min(large, l)
+        self.assertGreaterEqual(
+            large / small, 3.0,
+            "the quadratic reference escaped the probe: t_small=%.2fs "
+            "t_large=%.2fs (x%.2f)" % (small, large, large / small))
 
 
 # ---------------------------------------------------------------------------

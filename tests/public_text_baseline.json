@@ -3,5 +3,5 @@
     "tests/test_schema_corpus.py": 1,
     "tests/test_v0_10_0_long_vowel.py": 3,
     "tests/test_v0_11_0_alias_builtin.py": 1,
-    "tests/test_v0_9_1_hardening.py": 7
+    "tests/test_v0_9_1_hardening.py": 6
 }

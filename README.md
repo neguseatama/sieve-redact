@@ -1,4 +1,4 @@
-# Sieve Redact v0.12.0
+# Sieve Redact v0.12.1
 
 A command-line tool that removes sensitive information from documents —
 **deterministically**, while preserving **byte-for-byte integrity** of
@@ -175,7 +175,7 @@ matches both case variants of the listed ASCII letters.
 Example receipt (stdout) — `in.txt` contains `x秘密y`, run with
 `--rule "秘密:delete"`:
 
-    Sieve Redact v0.12.0 — レシート
+    Sieve Redact v0.12.1 — レシート
     入力: 8 バイト -> 出力: 2 バイト
     redact 件数: 1
       #1 rule=1 matcher=literal mode=delete pos=1..7 len=6B -> 0B sha256=062a2931da68...
