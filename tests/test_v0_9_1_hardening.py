@@ -849,12 +849,24 @@ class RD_T06_OverlapResolution(HardeningBase):
             dt = time.perf_counter() - t0
             self.assertEqual(len(red), count)
             return dt
-        t10 = timed(10000)
-        t20 = timed(20000)
-        # 件数 2 倍で時間 3 倍未満 (緩い境界・依頼書 RD-T06)。
-        self.assertLess(t20, 3.0 * t10,
-                        "quadratic: t10=%.2fs t20=%.2fs (x%.2f)"
-                        % (t10, t20, t20 / t10))
+
+        # 件数 2 倍で時間 3 倍未満 (緩い境界 — RD-T06)。基準の意味は
+        # 変えず、測り方だけを安定させる。単発 1 回の計測は実行環境の
+        # 一時的な揺れに負けることがある (真の比率は約 2.0 のところ、
+        # 単発の計測が 3.03 を記録した実績がある)。そこで 2 つのサイ
+        # ズを交互に 3 回ずつ走らせ、それぞれの最小値で比べる。最小値
+        # は一時的な遅延を吸収し、交互の順は経時的な速度変化を両サイ
+        # ズに均す。サイズ自体も大きくし、1 回の走行が揺れに対して十
+        # 分に長くなるようにした。
+        small = large = None
+        for _ in range(3):
+            s = timed(20000)
+            l = timed(40000)
+            small = s if small is None else min(small, s)
+            large = l if large is None else min(large, l)
+        self.assertLess(large, 3.0 * small,
+                        "quadratic: t_small=%.2fs t_large=%.2fs (x%.2f)"
+                        % (small, large, large / small))
 
     def test_complexity_comparison_survives_a_transient_slowdown(self):
         """The doubled-input comparison must not lose to one stall.

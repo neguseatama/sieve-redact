@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -32,15 +33,22 @@ jobs:
           pip install build
           python -m build
 
-      - name: The artifacts carry the tag's version
+      - name: The artifacts carry the release version
+        # a tag run compares the tag with the artifacts; a manual trial
+        # run has no tag, so the artifacts are compared with VERSION
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            version="$(python3 -c 'import sieve_redact; print(sieve_redact.VERSION)')"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
           test -f "dist/sieve_redact-${version}.tar.gz"
           test -f "dist/sieve_redact-${version}-py3-none-any.whl"
+          echo "RELEASE_VERSION=${version}" >> "${GITHUB_ENV}"
 
-      - name: Extract the CHANGELOG section for the tag
+      - name: Extract the CHANGELOG section for the release
         run: |
-          python3 tools/extract_changelog.py "${GITHUB_REF_NAME#v}" > release_body.md
+          python3 tools/extract_changelog.py "${RELEASE_VERSION}" > release_body.md
 
       - name: Check the release body
         # one finding stops the release before anything is published
@@ -51,7 +59,19 @@ jobs:
           cd dist
           sha256sum sieve_redact-*.tar.gz sieve_redact-*.whl > SHA256SUMS.txt
 
+      - name: Keep the trial outputs as workflow artifacts
+        # the deliverable of a trial run: the same outputs the tag run
+        # would attach to the GitHub Release, left as run artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-outputs-${{ github.run_number }}
+          path: |
+            dist/
+            release_body.md
+
       - name: Attest build provenance
+        if: github.event_name == 'push'
         uses: actions/attest@v4
         with:
           subject-path: |
@@ -59,6 +79,7 @@ jobs:
             dist/sieve_redact-*.whl
 
       - name: Attach the assets and the body to the GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           files: |
